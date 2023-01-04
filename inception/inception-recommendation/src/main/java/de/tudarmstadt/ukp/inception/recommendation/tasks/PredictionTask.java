@@ -1,8 +1,4 @@
 /*
- * Copyright 2017
- * Ubiquitous Knowledge Processing (UKP) Lab
- * Technische Universität Darmstadt
- * 
  * Licensed to the Technische Universität Darmstadt under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -21,87 +17,107 @@
  */
 package de.tudarmstadt.ukp.inception.recommendation.tasks;
 
-import java.util.ArrayList;
-import java.util.Collections;
+import static java.lang.System.currentTimeMillis;
+import static java.util.stream.Collectors.toList;
+
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
-import de.tudarmstadt.ukp.clarin.webanno.api.dao.casstorage.CasStorageSession;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
 import de.tudarmstadt.ukp.clarin.webanno.support.logging.LogMessage;
+import de.tudarmstadt.ukp.inception.annotation.storage.CasStorageSession;
 import de.tudarmstadt.ukp.inception.recommendation.api.RecommendationService;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.Predictions;
-import de.tudarmstadt.ukp.inception.scheduling.Task;
+import de.tudarmstadt.ukp.inception.recommendation.event.RecommenderTaskNotificationEvent;
 
 /**
  * This consumer predicts new annotations for a given annotation layer, if a classification tool for
  * this layer was selected previously.
  */
 public class PredictionTask
-    extends Task
+    extends RecommendationTask_ImplBase
 {
     private Logger log = LoggerFactory.getLogger(getClass());
 
     private @Autowired RecommendationService recommendationService;
     private @Autowired DocumentService documentService;
+    private @Autowired ApplicationEventPublisher appEventPublisher;
 
     private final SourceDocument currentDocument;
-    private final List<LogMessage> logMessages = new ArrayList<>();
+    private final int predictionBegin;
+    private final int predictionEnd;
 
-    public PredictionTask(User aUser, Project aProject, String aTrigger,
-            SourceDocument aCurrentDocument)
+    public PredictionTask(User aUser, String aTrigger, SourceDocument aCurrentDocument)
     {
-        super(aUser, aProject, aTrigger);
+        this(aUser, aTrigger, aCurrentDocument, -1, -1);
+    }
+
+    public PredictionTask(User aUser, String aTrigger, SourceDocument aCurrentDocument, int aBegin,
+            int aEnd)
+    {
+        super(aUser, aCurrentDocument.getProject(), aTrigger);
         currentDocument = aCurrentDocument;
+        predictionBegin = aBegin;
+        predictionEnd = aEnd;
     }
 
     @Override
-    public void run()
+    public void execute()
     {
-        try (CasStorageSession session = CasStorageSession.open()) {
-            User user = getUser();
+        try (CasStorageSession session = CasStorageSession.openNested()) {
+            long startTime = System.currentTimeMillis();
+            User user = getUser().orElseThrow();
             String username = user.getUsername();
-
             Project project = getProject();
+            Predictions predictions;
 
             List<SourceDocument> docs = documentService.listSourceDocuments(project);
-            List<SourceDocument> inherit = Collections.emptyList();
 
             // Limit prediction to a single document and inherit the rest?
-            if (!recommendationService.isPredictForAllDocuments(username, project)) {
-                inherit = docs.stream().filter(d -> !d.equals(currentDocument))
-                        .collect(Collectors.toList());
-                docs = Collections.singletonList(currentDocument);
-                log.debug("[{}][{}]: Limiting prediction to [{}]", getId(), username,
-                        currentDocument.getName());
+            if (recommendationService.isPredictForAllDocuments(username, project)) {
+                log.debug(
+                        "[{}][{}]: Starting prediction for project [{}] on [{}] docs triggered by [{}]",
+                        getId(), username, project, docs.size(), getTrigger());
+
+                predictions = recommendationService.computePredictions(user, project, docs);
+            }
+            else {
+                List<SourceDocument> inherit = docs.stream() //
+                        .filter(d -> !d.equals(currentDocument)) //
+                        .collect(toList());
+
+                log.debug(
+                        "[{}][{}]: Starting prediction for project [{}] on one doc "
+                                + "(inheriting [{}]) triggered by [{}]",
+                        getId(), username, project, inherit.size(), getTrigger());
+
+                predictions = recommendationService.computePredictions(user, project,
+                        currentDocument, inherit, predictionBegin, predictionEnd);
             }
 
-            log.debug(
-                    "[{}][{}]: Starting prediction for project [{}] on [{}] docs triggered by [{}]",
-                    getId(), username, project, docs.size(), getTrigger());
-
-            long startTime = System.currentTimeMillis();
-
-            Predictions predictions = recommendationService.computePredictions(user, project, docs,
-                    inherit);
-            predictions.inheritLog(logMessages);
+            predictions.inheritLog(getLogMessages());
 
             log.debug("[{}][{}]: Prediction complete ({} ms)", getId(), username,
-                    (System.currentTimeMillis() - startTime));
+                    currentTimeMillis() - startTime);
 
             recommendationService.putIncomingPredictions(user, project, predictions);
-        }
-    }
 
-    public void inheritLog(List<LogMessage> aLogMessages)
-    {
-        logMessages.addAll(aLogMessages);
+            appEventPublisher.publishEvent(
+                    RecommenderTaskNotificationEvent.builder(this, project, user.getUsername()) //
+                            .withMessage(LogMessage.info(this, "New preditions available")) //
+                            .build());
+
+            // We reset this in case the state was not properly cleared, e.g. the AL session
+            // was started but then the browser closed. Places where it is set include
+            // - ActiveLearningSideBar::moveToNextRecommendation
+            recommendationService.setPredictForAllDocuments(username, project, false);
+        }
     }
 }

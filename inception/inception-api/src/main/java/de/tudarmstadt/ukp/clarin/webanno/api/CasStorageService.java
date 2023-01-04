@@ -17,8 +17,9 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.api;
 
-import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Optional;
 
 import org.apache.uima.cas.CAS;
@@ -27,6 +28,7 @@ import de.tudarmstadt.ukp.clarin.webanno.api.casstorage.CasAccessMode;
 import de.tudarmstadt.ukp.clarin.webanno.api.casstorage.CasSessionException;
 import de.tudarmstadt.ukp.clarin.webanno.api.casstorage.CasStorageServiceAction;
 import de.tudarmstadt.ukp.clarin.webanno.api.casstorage.CasStorageServiceLoader;
+import de.tudarmstadt.ukp.clarin.webanno.api.casstorage.ConcurentCasModificationException;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
 
 public interface CasStorageService
@@ -47,6 +49,8 @@ public interface CasStorageService
      * @throws CasSessionException
      *             if no CAS storage session in available for the current thread or if the session
      *             does not permit writing.
+     * @throws IOException
+     *             if there was and error writing the CAS
      */
     void writeCas(SourceDocument aDocument, CAS aCas, String aUserName)
         throws IOException, CasSessionException;
@@ -135,9 +139,9 @@ public interface CasStorageService
     boolean deleteCas(SourceDocument aDocument, String aUsername)
         throws IOException, CasSessionException;
 
-    File getAnnotationFolder(SourceDocument aDocument) throws IOException;
+    void exportCas(SourceDocument aDocument, String aUser, OutputStream aStream) throws IOException;
 
-    File getCasFile(SourceDocument aDocument, String aUser) throws IOException;
+    void importCas(SourceDocument aDocument, String aUser, InputStream aStream) throws IOException;
 
     boolean existsCas(SourceDocument aDocument, String aUser) throws IOException;
 
@@ -158,6 +162,10 @@ public interface CasStorageService
     void analyzeAndRepair(SourceDocument aDocument, String aUsername, CAS aCas);
 
     Optional<Long> getCasTimestamp(SourceDocument aDocument, String aUser) throws IOException;
+
+    Optional<Long> verifyCasTimestamp(SourceDocument aDocument, String aUser,
+            long aExpectedTimeStamp, String aContextAction)
+        throws IOException, ConcurentCasModificationException;
 
     /**
      * Upgrades the given CAS in the storage.

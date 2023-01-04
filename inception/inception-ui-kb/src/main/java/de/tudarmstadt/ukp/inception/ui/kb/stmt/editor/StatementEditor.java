@@ -47,11 +47,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wicketstuff.event.annotation.OnEvent;
 
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.select.BootstrapSelect;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxButton;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxFormComponentUpdatingBehavior;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxLink;
-import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaModel;
 import de.tudarmstadt.ukp.inception.kb.KnowledgeBaseService;
 import de.tudarmstadt.ukp.inception.kb.graph.KBObject;
 import de.tudarmstadt.ukp.inception.kb.graph.KBProperty;
@@ -131,10 +129,10 @@ public class StatementEditor
         aTarget.add(this);
     }
 
-    private void actionAddQualifier(AjaxRequestTarget aTarget, KBStatement statement)
+    private void actionAddQualifier(AjaxRequestTarget aTarget, KBStatement aStatement)
     {
-        KBQualifier qualifierPorto = new KBQualifier(statement);
-        statement.addQualifier(qualifierPorto);
+        KBQualifier qualifierPorto = new KBQualifier(aStatement);
+        aStatement.addQualifier(qualifierPorto);
         aTarget.add(this);
     }
 
@@ -273,7 +271,7 @@ public class StatementEditor
                         @Override
                         protected IModel<KBQualifier> model(KBQualifier object)
                         {
-                            return LambdaModel.of(() -> object);
+                            return Model.of(object);
                         }
                     };
                 }
@@ -323,7 +321,7 @@ public class StatementEditor
         private DropDownChoice<ValueType> valueType;
 
         /**
-         * Creates a new fragement for editing a statement.<br>
+         * Creates a new fragment for editing a statement.<br>
          * The editor has two slightly different behaviors, depending on the value of
          * {@code isNewStatement}:
          * <ul>
@@ -371,7 +369,8 @@ public class StatementEditor
                 valueTypes = valueTypeRegistry.getAllTypes();
             }
 
-            valueType = new BootstrapSelect<>("valueType", valueTypes);
+            valueType = new DropDownChoice<>("valueType", valueTypes);
+            valueType.setNullValid(false);
             valueType.setChoiceRenderer(new ChoiceRenderer<>("uiName"));
             valueType.setModel(Model.of(
                     valueTypeRegistry.getValueType(aStatement.getObject(), property.getObject())));
@@ -382,6 +381,7 @@ public class StatementEditor
                         .createEditor("value", model, property, kbModel);
                 editor.setOutputMarkupId(true);
                 editor = (ValueEditor) editor.replaceWith(newEditor);
+                t.add(valueType);
                 t.add(editor);
             }));
             form.add(valueType);

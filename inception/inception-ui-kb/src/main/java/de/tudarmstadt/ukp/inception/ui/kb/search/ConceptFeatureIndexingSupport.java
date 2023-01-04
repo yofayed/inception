@@ -27,13 +27,13 @@ import org.apache.commons.collections4.multimap.HashSetValuedHashMap;
 import org.apache.uima.cas.text.AnnotationFS;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupport;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupportRegistry;
 import de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.inception.kb.KnowledgeBaseService;
 import de.tudarmstadt.ukp.inception.kb.graph.KBHandle;
 import de.tudarmstadt.ukp.inception.kb.graph.KBObject;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupport;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupportRegistry;
 import de.tudarmstadt.ukp.inception.search.FeatureIndexingSupport;
 import de.tudarmstadt.ukp.inception.ui.kb.config.KnowledgeBaseServiceUIAutoConfiguration;
 
@@ -94,7 +94,7 @@ public class ConceptFeatureIndexingSupport
     {
         // Returns KB IRI label after checking if the
         // feature type is associated with KB and feature value is not null
-        FeatureSupport<?> featSup = featureSupportRegistry.getFeatureSupport(aFeature);
+        FeatureSupport<?> featSup = featureSupportRegistry.findExtension(aFeature).orElseThrow();
         KBHandle featureObject = featSup.getFeatureValue(aFeature, aAnnotation);
         MultiValuedMap<String, String> values = new HashSetValuedHashMap<String, String>();
 
@@ -104,7 +104,7 @@ public class ConceptFeatureIndexingSupport
         }
 
         // Get object from the KB
-        Optional<KBObject> kbObject = kbService.readItem(aFeature.getProject(),
+        Optional<KBHandle> kbObject = kbService.readHandle(aFeature.getProject(),
                 WebAnnoCasUtil.getFeature(aAnnotation, aFeature.getName()));
 
         if (!kbObject.isPresent()) {

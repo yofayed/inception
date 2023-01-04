@@ -27,6 +27,7 @@ import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
+import javax.persistence.Lob;
 import javax.persistence.ManyToOne;
 import javax.persistence.PrePersist;
 import javax.persistence.PreUpdate;
@@ -67,10 +68,40 @@ public class AnnotationDocument
     @JoinColumn(name = "document")
     private SourceDocument document;
 
+    /**
+     * The effective state of the annotation document. This state may be set by the annotator user
+     * or by a third person (e.g. curator/manager) or the system (e.g. workload manager).
+     */
     @Column(nullable = false)
     @Type(type = "de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocumentStateType")
     private AnnotationDocumentState state = AnnotationDocumentState.NEW;
 
+    /**
+     * State manually set by the annotator user. If a third person (e.g. curator/manager) or the
+     * system (e.g. workload manager) wants to change the state, they only change {@link #state} and
+     * leave this field here as it is. The exception is if the document is reset in which case the
+     * state should be cleared. This state is maintained mostly for informational purposes, e.g. to
+     * allow managers to see whether an annotation document as marked as finished by the annotator
+     * or if it was marked as finished by the manager or by the system.
+     */
+    @Column(nullable = true)
+    @Type(type = "de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocumentStateType")
+    private AnnotationDocumentState annotatorState;
+
+    /**
+     * Comment the anntoator can leave when marking a document as finished. Typically used to report
+     * problems to the curator.
+     */
+    @Lob
+    @Column(length = 64000)
+    private String annotatorComment;
+
+    /**
+     * Last change made to the annotations or the last state transition triggered by the annotator
+     * user. State changes triggered by a third person (e.g. curator/manager) or by the system (e.g.
+     * workload manager) should not update the timestamp - except if the change is a reset of the
+     * annotation document in which case the timestamp should be cleared.
+     */
     @Temporal(TemporalType.TIMESTAMP)
     private Date timestamp;
 
@@ -90,14 +121,12 @@ public class AnnotationDocument
         // Nothing to do
     }
 
-    public AnnotationDocument(String aName, Project aProject, String aUser,
-            SourceDocument aDocument)
+    public AnnotationDocument(String aUser, SourceDocument aDocument)
     {
-        super();
-        name = aName;
-        project = aProject;
         user = aUser;
         document = aDocument;
+        name = aDocument.getName();
+        project = aDocument.getProject();
     }
 
     public SourceDocument getDocument()
@@ -160,14 +189,35 @@ public class AnnotationDocument
         state = aState;
     }
 
+    public AnnotationDocumentState getAnnotatorState()
+    {
+        return annotatorState;
+    }
+
+    public void setAnnotatorState(AnnotationDocumentState aAnnotatorState)
+    {
+        annotatorState = aAnnotatorState;
+    }
+
+    public String getAnnotatorComment()
+    {
+        return annotatorComment;
+    }
+
+    public void setAnnotatorComment(String aAnnotatorComment)
+    {
+        annotatorComment = aAnnotatorComment;
+    }
+
     public Date getTimestamp()
     {
         return timestamp;
     }
 
     /**
-     * Last change to the actual annotations in the CAS. The change to the annotation document
-     * record is tracked in {@link #getUpdated()}
+     * @param aTimestamp
+     *            last change to the actual annotations in the CAS. The change to the annotation
+     *            document record is tracked in {@link #getUpdated()}
      */
     public void setTimestamp(Date aTimestamp)
     {
@@ -189,7 +239,7 @@ public class AnnotationDocument
     {
         // When we import data, we set the fields via setters and don't want these to be
         // overwritten by this event handler.
-        if (created != null) {
+        if (created == null) {
             created = new Date();
             updated = created;
         }
@@ -212,7 +262,7 @@ public class AnnotationDocument
     }
 
     /**
-     * Last change to the annotation document record.
+     * @return last change to the annotation document record.
      */
     public Date getUpdated()
     {
@@ -222,6 +272,12 @@ public class AnnotationDocument
     public void setUpdated(Date aUpdated)
     {
         updated = aUpdated;
+    }
+
+    @Override
+    public String toString()
+    {
+        return "[" + user + "@" + name + "](" + id + ")";
     }
 
     @Override

@@ -17,8 +17,9 @@
  */
 package de.tudarmstadt.ukp.inception.search.index;
 
+import static java.util.Collections.unmodifiableList;
+
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import org.apache.commons.lang3.ClassUtils;
@@ -31,6 +32,7 @@ import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 
+import de.tudarmstadt.ukp.clarin.webanno.support.logging.BaseLoggers;
 import de.tudarmstadt.ukp.inception.search.config.SearchServiceAutoConfiguration;
 
 /**
@@ -69,12 +71,14 @@ public class PhysicalIndexRegistryImpl
             AnnotationAwareOrderComparator.sort(exts);
 
             for (PhysicalIndexFactory fs : exts) {
-                log.info("Found index extension: {}",
+                log.debug("Found index extension: {}",
                         ClassUtils.getAbbreviatedName(fs.getClass(), 20));
             }
         }
 
-        extensions = Collections.unmodifiableList(exts);
+        BaseLoggers.BOOT_LOG.info("Found [{}] index extensions", exts.size());
+
+        extensions = unmodifiableList(exts);
     }
 
     @Override

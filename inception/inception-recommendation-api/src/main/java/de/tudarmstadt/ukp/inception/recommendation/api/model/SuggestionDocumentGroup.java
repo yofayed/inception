@@ -1,8 +1,4 @@
 /*
- * Copyright 2018
- * Ubiquitous Knowledge Processing (UKP) Lab
- * Technische Universität Darmstadt
- * 
  * Licensed to the Technische Universität Darmstadt under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -21,6 +17,7 @@
  */
 package de.tudarmstadt.ukp.inception.recommendation.api.model;
 
+import static java.util.stream.Collectors.toList;
 import static org.apache.commons.collections4.IteratorUtils.unmodifiableIterator;
 
 import java.util.AbstractCollection;
@@ -34,11 +31,14 @@ import org.apache.commons.lang3.Validate;
 /**
  * Container for {@link SuggestionGroup suggestion groups} all coming from a single document. No
  * guarantees about layers and features though.
+ * 
+ * @param <T>
+ *            the suggestion type
  */
-public class SuggestionDocumentGroup
-    extends AbstractCollection<SuggestionGroup>
+public class SuggestionDocumentGroup<T extends AnnotationSuggestion>
+    extends AbstractCollection<SuggestionGroup<T>>
 {
-    private Collection<SuggestionGroup> groups;
+    private Collection<SuggestionGroup<T>> groups;
     private String documentName;
 
     public SuggestionDocumentGroup()
@@ -46,14 +46,33 @@ public class SuggestionDocumentGroup
         groups = new ArrayList<>();
     }
 
-    public SuggestionDocumentGroup(List<AnnotationSuggestion> aSuggestions)
+    public SuggestionDocumentGroup(List<T> aSuggestions)
     {
         this();
-        SuggestionGroup.group(aSuggestions).stream().forEachOrdered(this::add);
+        addAll(SuggestionGroup.group(aSuggestions));
+    }
+
+    /**
+     * @param type
+     *            the type of suggestions to retrieve
+     * @param aSuggestions
+     *            the list to retrieve suggestions from
+     * @param <V>
+     *            the suggestion type
+     * @return a SuggestionDocumentGroup where only suggestions of type V are added
+     */
+    @SuppressWarnings("unchecked")
+    public static <V extends AnnotationSuggestion> SuggestionDocumentGroup<V> groupsOfType(
+            Class<V> type, List<AnnotationSuggestion> aSuggestions)
+    {
+        List<AnnotationSuggestion> filteredSuggestions = aSuggestions.stream()
+                .filter(type::isInstance) //
+                .collect(toList());
+        return new SuggestionDocumentGroup<V>((List<V>) filteredSuggestions);
     }
 
     @Override
-    public boolean add(SuggestionGroup aGroup)
+    public boolean add(SuggestionGroup<T> aGroup)
     {
         boolean empty = isEmpty();
 
@@ -72,7 +91,7 @@ public class SuggestionDocumentGroup
     }
 
     @Override
-    public Iterator<SuggestionGroup> iterator()
+    public Iterator<SuggestionGroup<T>> iterator()
     {
         return unmodifiableIterator(groups.iterator());
     }

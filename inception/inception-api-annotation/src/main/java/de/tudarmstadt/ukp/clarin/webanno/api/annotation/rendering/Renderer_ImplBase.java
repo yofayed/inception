@@ -18,14 +18,21 @@
 package de.tudarmstadt.ukp.clarin.webanno.api.annotation.rendering;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.adapter.TypeAdapter;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupportRegistry;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.layer.LayerSupportRegistry;
+import org.apache.uima.cas.CAS;
+import org.apache.uima.cas.TypeSystem;
+import org.apache.uima.cas.text.AnnotationFS;
+
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
+import de.tudarmstadt.ukp.inception.rendering.Renderer;
+import de.tudarmstadt.ukp.inception.rendering.vmodel.VObject;
+import de.tudarmstadt.ukp.inception.schema.adapter.TypeAdapter;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupportRegistry;
+import de.tudarmstadt.ukp.inception.schema.layer.LayerSupportRegistry;
 
 public abstract class Renderer_ImplBase<T extends TypeAdapter>
     implements Renderer
@@ -37,6 +44,9 @@ public abstract class Renderer_ImplBase<T extends TypeAdapter>
     private Map<AnnotationFeature, Object> featureTraitsCache;
     private Map<AnnotationLayer, Object> layerTraitsCache;
 
+    private TypeSystem typeSystem;
+    private boolean allTypesPresent;
+
     public Renderer_ImplBase(T aTypeAdapter, LayerSupportRegistry aLayerSupportRegistry,
             FeatureSupportRegistry aFeatureSupportRegistry)
     {
@@ -45,20 +55,49 @@ public abstract class Renderer_ImplBase<T extends TypeAdapter>
         typeAdapter = aTypeAdapter;
     }
 
+    /**
+     * Checks if the type system has changed compared to the last call. If this is the case, then
+     * {@link #typeSystemInit} is called to give the renderer the opportunity to obtain new type and
+     * feature information from the type system.
+     * 
+     * @param aCas
+     *            a CAS.
+     * @return returns {@code true} if all types are present and rendering can commence and
+     *         {@code false} if any types are missing and rendering should be skipped.
+     */
+    protected boolean checkTypeSystem(CAS aCas)
+    {
+        if (typeSystem != aCas.getTypeSystem()) {
+            typeSystem = aCas.getTypeSystem();
+            allTypesPresent = typeSystemInit(typeSystem);
+        }
+
+        return allTypesPresent;
+    }
+
+    protected abstract boolean typeSystemInit(TypeSystem aTypeSystem);
+
     @Override
     public FeatureSupportRegistry getFeatureSupportRegistry()
     {
         return featureSupportRegistry;
     }
 
+    @Override
     public T getTypeAdapter()
     {
         return typeAdapter;
     }
 
     /**
-     * Decodes the traits for the given feature and returns them if they implement the requested
-     * interface. This method internally caches the decoded traits, so it can be called often.
+     * @param aFeature
+     *            the feature
+     * @param aInterface
+     *            the traits interface
+     * @param <T>
+     *            the traits type
+     * @return the traits for the given feature if they implement the requested interface. This
+     *         method internally caches the decoded traits, so it can be called often.
      */
     @SuppressWarnings("unchecked")
     public <T> Optional<T> getTraits(AnnotationFeature aFeature, Class<T> aInterface)
@@ -68,7 +107,8 @@ public abstract class Renderer_ImplBase<T extends TypeAdapter>
         }
 
         Object trait = featureTraitsCache.computeIfAbsent(aFeature,
-                feature -> featureSupportRegistry.getFeatureSupport(feature).readTraits(feature));
+                feature -> featureSupportRegistry.findExtension(feature).orElseThrow()
+                        .readTraits(feature));
 
         if (trait != null && aInterface.isAssignableFrom(trait.getClass())) {
             return Optional.of((T) trait);
@@ -78,8 +118,14 @@ public abstract class Renderer_ImplBase<T extends TypeAdapter>
     }
 
     /**
-     * Decodes the traits for the given layer and returns them if they implement the requested
-     * interface. This method internally caches the decoded traits, so it can be called often.
+     * @param aLayer
+     *            the layer
+     * @param aInterface
+     *            the traits interface
+     * @param <T>
+     *            the traits type
+     * @return the decoded traits for the given layer if they implement the requested interface.
+     *         This method internally caches the decoded traits, so it can be called often.
      */
     @SuppressWarnings("unchecked")
     public <T> Optional<T> getTraits(AnnotationLayer aLayer, Class<T> aInterface)
@@ -97,4 +143,13 @@ public abstract class Renderer_ImplBase<T extends TypeAdapter>
 
         return Optional.empty();
     }
+
+    public void renderLazyDetails(AnnotationFS fs, VObject aVObject,
+            List<AnnotationFeature> aFeatures)
+    {
+        aVObject.addLazyDetails(getLazyDetails(fs, aFeatures));
+    }
+
+    public abstract List<AnnotationFS> selectAnnotationsInWindow(CAS aCas, int aWindowBegin,
+            int aWindowEnd);
 }

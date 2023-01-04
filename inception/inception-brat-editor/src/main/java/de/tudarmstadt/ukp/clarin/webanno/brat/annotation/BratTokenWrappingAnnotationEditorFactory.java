@@ -18,16 +18,21 @@
 package de.tudarmstadt.ukp.clarin.webanno.brat.annotation;
 
 import org.apache.wicket.model.IModel;
-import org.springframework.stereotype.Component;
 
 import de.tudarmstadt.ukp.clarin.webanno.api.CasProvider;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.AnnotationEditorBase;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.AnnotationEditorFactoryImplBase;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.action.AnnotationActionHandler;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotatorState;
 import de.tudarmstadt.ukp.clarin.webanno.api.annotation.paging.TokenWrappingPagingStrategy;
+import de.tudarmstadt.ukp.clarin.webanno.brat.config.BratAnnotationEditorAutoConfiguration;
+import de.tudarmstadt.ukp.inception.editor.AnnotationEditorBase;
+import de.tudarmstadt.ukp.inception.editor.AnnotationEditorFactoryImplBase;
+import de.tudarmstadt.ukp.inception.editor.action.AnnotationActionHandler;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
 
-@Component("tokenWrappingBratEditor")
+/**
+ * <p>
+ * This class is exposed as a Spring Component via
+ * {@link BratAnnotationEditorAutoConfiguration#tokenWrappingBratEditor}.
+ * </p>
+ */
 public class BratTokenWrappingAnnotationEditorFactory
     extends AnnotationEditorFactoryImplBase
 {
@@ -47,7 +52,7 @@ public class BratTokenWrappingAnnotationEditorFactory
     @Override
     public int getOrder()
     {
-        return 1;
+        return 2;
     }
 
     @Override

@@ -22,72 +22,57 @@ import java.util.Optional;
 import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.panel.Panel;
 import org.apache.wicket.model.IModel;
-import org.apache.wicket.model.Model;
 import org.apache.wicket.model.StringResourceModel;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 
 import com.googlecode.wicket.jquery.core.Options;
 import com.googlecode.wicket.kendo.ui.widget.tooltip.TooltipBehavior;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupport;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupportRegistry;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
-import de.tudarmstadt.ukp.inception.kb.ConceptFeatureTraits;
 import de.tudarmstadt.ukp.inception.kb.KnowledgeBaseService;
 import de.tudarmstadt.ukp.inception.kb.model.KnowledgeBase;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupportRegistry;
 
 public class DisabledKBWarning
     extends Panel
 {
+    private static final long serialVersionUID = -4673760000245492439L;
 
     private @SpringBean FeatureSupportRegistry featureSupportRegistry;
     private @SpringBean KnowledgeBaseService kbService;
 
-    private IModel<ConceptFeatureTraits> featureTraits;
-    private Project project;
+    private final IModel<String> repositoryIdModel;
+    private final Project project;
 
     public DisabledKBWarning(String aId, IModel<AnnotationFeature> aFeatureModel,
-            IModel<ConceptFeatureTraits> aTraitsModel)
+            IModel<String> aRepositoryIdModel)
     {
-        super(aId);
+        super(aId, aFeatureModel);
 
         AnnotationFeature feature = aFeatureModel.getObject();
         project = feature.getProject();
+        repositoryIdModel = aRepositoryIdModel;
 
-        // If traits are not explicitly given, try to resolve them via featureSupportRegistry
-        if (aTraitsModel == null) {
-            FeatureSupport<ConceptFeatureTraits> fs = featureSupportRegistry
-                    .getFeatureSupport(aFeatureModel.getObject());
-            featureTraits = Model.of(fs.readTraits(aFeatureModel.getObject()));
-        }
-        else {
-            featureTraits = aTraitsModel;
-        }
-
-        String kbName = resolveKBName(featureTraits.getObject());
+        String kbName = repositoryIdModel.map(this::resolveKBName).getObject();
 
         WebMarkupContainer warning = new WebMarkupContainer("warning");
         add(warning);
 
         TooltipBehavior tip = new TooltipBehavior();
         warning.add(tip);
-        tip.setOption("content", Options.asString(new StringResourceModel("disabledKbWarning", this)
-                .setParameters(kbName, feature.getLayer().getUiName(), feature.getUiName())));
+        tip.setOption("content",
+                Options.asString(new StringResourceModel("disabledKbWarning", this)
+                        .setParameters(kbName, feature.getLayer().getUiName(), feature.getUiName())
+                        .getObject()));
         tip.setOption("width", Options.asString("300px"));
     }
 
-    public DisabledKBWarning(String aId, IModel<AnnotationFeature> aFeatureModel)
-    {
-        this(aId, aFeatureModel, null);
-
-    }
-
-    private String resolveKBName(ConceptFeatureTraits aTraits)
+    private String resolveKBName(String aRepositoryId)
     {
         Optional<KnowledgeBase> kb = Optional.empty();
-        if (aTraits != null && aTraits.getRepositoryId() != null) {
-            kb = kbService.getKnowledgeBaseById(project, aTraits.getRepositoryId());
+        if (aRepositoryId != null) {
+            kb = kbService.getKnowledgeBaseById(project, aRepositoryId);
         }
         return kb.isPresent() ? kb.get().getName() : "unknown ID";
     }
@@ -96,8 +81,7 @@ public class DisabledKBWarning
     protected void onConfigure()
     {
         super.onConfigure();
-        String repoId = featureTraits.getObject().getRepositoryId();
+        String repoId = repositoryIdModel.getObject();
         setVisible(!(repoId == null || kbService.isKnowledgeBaseEnabled(project, repoId)));
     }
-
 }

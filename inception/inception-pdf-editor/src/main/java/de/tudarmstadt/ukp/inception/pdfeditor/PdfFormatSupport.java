@@ -33,12 +33,15 @@ import de.tudarmstadt.ukp.inception.pdfeditor.config.PdfAnnotationEditorSupportA
  * This class is exposed as a Spring Component via
  * {@link PdfAnnotationEditorSupportAutoConfiguration#pdfFormatSupport()}.
  * </p>
+ *
+ * @deprecated Superseded by the new PDF editor
  */
+@Deprecated
 public class PdfFormatSupport
     implements FormatSupport
 {
     public static final String ID = "pdf";
-    public static final String NAME = "PDF";
+    public static final String NAME = "PDF (legacy)";
 
     @Override
     public String getId()

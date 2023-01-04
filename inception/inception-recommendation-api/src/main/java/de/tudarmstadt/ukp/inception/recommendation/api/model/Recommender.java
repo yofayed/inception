@@ -1,8 +1,4 @@
 /*
- * Copyright 2017
- * Ubiquitous Knowledge Processing (UKP) Lab
- * Technische Universität Darmstadt
- * 
  * Licensed to the Technische Universität Darmstadt under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -22,6 +18,7 @@
 package de.tudarmstadt.ukp.inception.recommendation.api.model;
 
 import java.io.Serializable;
+import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
 
@@ -103,6 +100,23 @@ public class Recommender
     @Lob
     @Column(length = 64000)
     private String traits;
+
+    private Recommender(Builder builder)
+    {
+        this.id = builder.id;
+        this.project = builder.project;
+        this.layer = builder.layer;
+        this.feature = builder.feature;
+        this.name = builder.name;
+        this.tool = builder.tool;
+        this.threshold = builder.threshold;
+        this.alwaysSelected = builder.alwaysSelected;
+        this.skipEvaluation = builder.skipEvaluation;
+        this.enabled = builder.enabled;
+        this.maxRecommendations = builder.maxRecommendations;
+        this.statesIgnoredForTraining = builder.statesIgnoredForTraining;
+        this.traits = builder.traits;
+    }
 
     public Recommender()
     {
@@ -268,21 +282,116 @@ public class Recommender
     @Override
     public String toString()
     {
-        final StringBuilder sb = new StringBuilder("Recommender{");
-        sb.append("id=").append(id);
-        sb.append(", project=").append(project);
-        sb.append(", layer=").append(layer);
-        sb.append(", feature='").append(feature).append('\'');
-        sb.append(", name='").append(name).append('\'');
-        sb.append(", tool='").append(tool).append('\'');
-        sb.append(", threshold=").append(threshold);
-        sb.append(", alwaysSelected=").append(alwaysSelected);
-        sb.append(", skipEvaluation=").append(skipEvaluation);
-        sb.append(", enabled=").append(enabled);
-        sb.append(", maxRecommendations=").append(maxRecommendations);
-        sb.append(", statesIgnoredForTraining=").append(statesIgnoredForTraining);
-        sb.append(", traits='").append(traits).append('\'');
-        sb.append('}');
-        return sb.toString();
+        return "[" + name + "](" + id + ")";
+    }
+
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
+    public static final class Builder
+    {
+        private Long id;
+        private Project project;
+        private AnnotationLayer layer;
+        private AnnotationFeature feature;
+        private String name;
+        private String tool;
+        private double threshold;
+        private boolean alwaysSelected;
+        private boolean skipEvaluation;
+        private boolean enabled = true;
+        private int maxRecommendations;
+        private Set<AnnotationDocumentState> statesIgnoredForTraining = Collections.emptySet();
+        private String traits;
+
+        private Builder()
+        {
+        }
+
+        public Builder withId(Long aId)
+        {
+            id = aId;
+            return this;
+        }
+
+        public Builder withProject(Project aProject)
+        {
+            project = aProject;
+            return this;
+        }
+
+        public Builder withLayer(AnnotationLayer aLayer)
+        {
+            layer = aLayer;
+            return this;
+        }
+
+        public Builder withFeature(AnnotationFeature aFeature)
+        {
+            feature = aFeature;
+            return this;
+        }
+
+        public Builder withName(String aName)
+        {
+            name = aName;
+            return this;
+        }
+
+        public Builder withTool(String aTool)
+        {
+            tool = aTool;
+            return this;
+        }
+
+        public Builder withThreshold(double aThreshold)
+        {
+            threshold = aThreshold;
+            return this;
+        }
+
+        public Builder withAlwaysSelected(boolean aAlwaysSelected)
+        {
+            alwaysSelected = aAlwaysSelected;
+            return this;
+        }
+
+        public Builder withSkipEvaluation(boolean aSkipEvaluation)
+        {
+            skipEvaluation = aSkipEvaluation;
+            return this;
+        }
+
+        public Builder withEnabled(boolean aEnabled)
+        {
+            enabled = aEnabled;
+            return this;
+        }
+
+        public Builder withMaxRecommendations(int aMaxRecommendations)
+        {
+            maxRecommendations = aMaxRecommendations;
+            return this;
+        }
+
+        public Builder withStatesIgnoredForTraining(
+                Set<AnnotationDocumentState> aStatesIgnoredForTraining)
+        {
+            statesIgnoredForTraining = aStatesIgnoredForTraining;
+            return this;
+        }
+
+        public Builder withTraits(String aTraits)
+        {
+            traits = aTraits;
+            return this;
+        }
+
+        public Recommender build()
+        {
+            return new Recommender(this);
+        }
     }
 }

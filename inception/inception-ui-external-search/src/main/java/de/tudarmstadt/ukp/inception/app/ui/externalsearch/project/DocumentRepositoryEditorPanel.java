@@ -37,8 +37,6 @@ import org.apache.wicket.model.CompoundPropertyModel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.select.BootstrapSelect;
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxFormSubmittingBehavior;
@@ -49,6 +47,7 @@ import de.tudarmstadt.ukp.inception.externalsearch.ExternalSearchProviderFactory
 import de.tudarmstadt.ukp.inception.externalsearch.ExternalSearchProviderRegistry;
 import de.tudarmstadt.ukp.inception.externalsearch.ExternalSearchService;
 import de.tudarmstadt.ukp.inception.externalsearch.model.DocumentRepository;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
 
 public class DocumentRepositoryEditorPanel
     extends Panel
@@ -94,7 +93,7 @@ public class DocumentRepositoryEditorPanel
                     .findFirst().orElse(null);
         }, (v) -> repositoryModel.getObject().setType(v.getKey()));
 
-        typeChoice = new BootstrapSelect<Pair<String, String>>("type", typeModel, this::listTypes)
+        typeChoice = new DropDownChoice<Pair<String, String>>("type", typeModel, this::listTypes)
         {
             private static final long serialVersionUID = -1869081847783375166L;
 
@@ -103,7 +102,7 @@ public class DocumentRepositoryEditorPanel
             {
                 Component newProperties;
                 if (form.getModelObject() != null && getModelObject() != null) {
-                    ExternalSearchProviderFactory espf = repositoryRegistry
+                    ExternalSearchProviderFactory<?> espf = repositoryRegistry
                             .getExternalSearchProviderFactory(getModelObject().getKey());
                     newProperties = espf.createTraitsEditor(MID_PROPERTIES, form.getModel());
                 }

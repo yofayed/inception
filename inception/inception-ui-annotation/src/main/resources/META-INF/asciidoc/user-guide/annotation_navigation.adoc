@@ -22,43 +22,43 @@ Sentence  numbers  on  the  left  side  of  the  annotation  page  show  the  ex
 
 image::annotation3.jpg[align="center"]
 
-The arrow buttons *first page*, *next page*, *previous page*, *last page*, and *go to page* allow you to navigate accordingly. The *Prev.* and *Next* buttons in the *Document* frame allow you to go to the previous or next document on your project list. You can also use the following keyboard assignments in order to navigate only using your keyboard.
+The arrow buttons *first page*, *next page*, *previous page*, *last page*, and *go to page* allow you to navigate accordingly. 
+
+The *Prev.* and *Next* buttons in the *Document* frame allow you to go to the previous or next document on your project list. 
+
+When an annotation is selected, there are additional arrow buttons in the right sidebar
+which can be used to navigate between annotations on the selected layer within the current document.
+
+You can also use the following keyboard assignments in order to navigate only using your keyboard.
 
 .Navigation key bindings
 |====
 | Key | Action 
 
-| *HOME*
-| jump to first sentence
+| kbd:[Home]
+| go to the start of the document
 
-| *END*
-| jump to last sentence
+| kbd:[End]
+| go to the end of the document
 
-| *PAGE DOWN*
-| move to the next page, if not in the last page already
+| kbd:[Page-Down]
+| go to the next page, if not in the last page already
 
-| *PAGE UP*
-| move to previous page, if not already in the first page
+| kbd:[Page-Up]
+| go to previous page, if not already in the first page
 
-| *SHIFT+PAGE DOWN*
+| kbd:[Shift + Page-Down]
 | go to next document in project, if available
 
-| *SHIFT+PAGE UP* 
+| kbd:[Shift + Page-Up]
 | go to previous document in project, if available
+
+| kbd:[Shuft + Cursor-Left]
+| go to previous annotation on the current layer, if available
+
+| kbd:[Shift + Cursor-Right]
+| go to next annotation on the current layer, if available
+
+| kbd:[Shift + Delete]
+| delete the currently selected annotation
 |====
-
-A click on the *Help* button displays the Guidelines for the tool and *The Annotator's Guide to NER-Annotation*.
-When you are finished with annotating or curating a document, please click on the *Done*
-button, so that the document may be further processed. If the button above the *Done* is a cross symbol, it means the documents have already been finished. If the symbol has a tick, it is still open.
-
-image::annotation4.png[align="center"]
-
-Annotation of spans works by selecting the span, or double-clicking on a word. This activates the *Actions*-box on the right, where you can choose a layer. One can also type in the initial letters and chose the needed layer. After having chosen a layer, the drop-down menu inside the *Features*-box displays the features you can use during the annotation. The tag can be selected out of the drop-down menu inside the *Features*-box which contains the tags of the chosen layer.
-
-image::annotation_edit_version3.png[align="center"]
-
-To change or delete an annotation, double-click on the annotation (span or link annotations). The *Actions*-box is now activated. Changes and Deletions are possible via the respective buttons. 
-
-Link annotations (between POS tags) are created by selecting the starting POS-tag, then dragging the arrow to connect it to its target POS tag. All possible targets are highlighted. 
-
-image::annotation_pos_span.jpg[align="center"]

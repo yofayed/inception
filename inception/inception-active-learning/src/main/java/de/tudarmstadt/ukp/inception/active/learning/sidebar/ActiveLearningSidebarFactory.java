@@ -18,16 +18,19 @@
 package de.tudarmstadt.ukp.inception.active.learning.sidebar;
 
 import org.apache.wicket.model.IModel;
-import org.apache.wicket.request.resource.PackageResourceReference;
-import org.apache.wicket.request.resource.ResourceReference;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import de.agilecoders.wicket.core.markup.html.bootstrap.image.IconType;
+import de.agilecoders.wicket.extensions.markup.html.bootstrap.icon.FontAwesome5IconType;
 import de.tudarmstadt.ukp.clarin.webanno.api.CasProvider;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.action.AnnotationActionHandler;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotatorState;
+import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.AnnotationPage;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.sidebar.AnnotationSidebarFactory_ImplBase;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.sidebar.AnnotationSidebar_ImplBase;
 import de.tudarmstadt.ukp.inception.active.learning.config.ActiveLearningAutoConfiguration;
+import de.tudarmstadt.ukp.inception.editor.action.AnnotationActionHandler;
+import de.tudarmstadt.ukp.inception.recommendation.api.RecommendationService;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
 
 /**
  * <p>
@@ -38,8 +41,13 @@ import de.tudarmstadt.ukp.inception.active.learning.config.ActiveLearningAutoCon
 public class ActiveLearningSidebarFactory
     extends AnnotationSidebarFactory_ImplBase
 {
-    private static final ResourceReference ICON = new PackageResourceReference(
-            ActiveLearningSidebarFactory.class, "active_learning.png");
+    private final RecommendationService recommendationService;
+
+    @Autowired
+    public ActiveLearningSidebarFactory(RecommendationService aRecommendationService)
+    {
+        recommendationService = aRecommendationService;
+    }
 
     @Override
     public String getDisplayName()
@@ -48,9 +56,28 @@ public class ActiveLearningSidebarFactory
     }
 
     @Override
-    public ResourceReference getIcon()
+    public String getDescription()
     {
-        return ICON;
+        return "Guides the user through recommendations to be reviewed. Only available if the "
+                + "project contains enabled recommenders.";
+    }
+
+    @Override
+    public IconType getIcon()
+    {
+        return FontAwesome5IconType.robot_s;
+    }
+
+    @Override
+    public boolean available(Project aProject)
+    {
+        return recommendationService.existsEnabledRecommender(aProject);
+    }
+
+    @Override
+    public boolean applies(AnnotatorState aState)
+    {
+        return available(aState.getProject());
     }
 
     @Override

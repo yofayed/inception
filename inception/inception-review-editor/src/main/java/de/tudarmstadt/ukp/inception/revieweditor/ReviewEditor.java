@@ -19,11 +19,9 @@ package de.tudarmstadt.ukp.inception.revieweditor;
 
 import java.io.IOException;
 
-import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.uima.cas.CAS;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.event.Broadcast;
-import org.apache.wicket.feedback.IFeedback;
 import org.apache.wicket.markup.head.IHeaderResponse;
 import org.apache.wicket.model.IModel;
 import org.slf4j.Logger;
@@ -31,13 +29,13 @@ import org.slf4j.LoggerFactory;
 import org.wicketstuff.event.annotation.OnEvent;
 
 import de.tudarmstadt.ukp.clarin.webanno.api.CasProvider;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.AnnotationEditorBase;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.action.AnnotationActionHandler;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.exception.AnnotationException;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotatorState;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.VID;
+import de.tudarmstadt.ukp.inception.editor.AnnotationEditorBase;
+import de.tudarmstadt.ukp.inception.editor.action.AnnotationActionHandler;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
+import de.tudarmstadt.ukp.inception.rendering.vmodel.VID;
 import de.tudarmstadt.ukp.inception.revieweditor.event.RefreshEvent;
 import de.tudarmstadt.ukp.inception.revieweditor.event.SelectAnnotationEvent;
+import de.tudarmstadt.ukp.inception.schema.adapter.AnnotationException;
 
 public class ReviewEditor
     extends AnnotationEditorBase
@@ -68,18 +66,6 @@ public class ReviewEditor
         send(getPage(), Broadcast.BREADTH, new RefreshEvent(aTarget));
     }
 
-    private void handleError(String aMessage, Throwable aCause, AjaxRequestTarget aTarget)
-    {
-        LOG.error(aMessage, aCause);
-        handleError(aMessage + ": " + ExceptionUtils.getRootCauseMessage(aCause), aTarget);
-    }
-
-    private void handleError(String aMessage, AjaxRequestTarget aTarget)
-    {
-        error(aMessage);
-        aTarget.addChildren(getPage(), IFeedback.class);
-    }
-
     @OnEvent(stop = true)
     public void onSelectAnnotationEvent(SelectAnnotationEvent aEvent)
     {
@@ -95,7 +81,7 @@ public class ReviewEditor
             getModelObject().getSelection().selectSpan(vid, cas, begin, end);
 
             if (getModelObject().isSlotArmed()) {
-                getActionHandler().actionFillSlot(target, cas, begin, end, vid);
+                getActionHandler().actionFillSlot(target, cas, vid);
             }
             else {
                 getActionHandler().actionSelect(target);

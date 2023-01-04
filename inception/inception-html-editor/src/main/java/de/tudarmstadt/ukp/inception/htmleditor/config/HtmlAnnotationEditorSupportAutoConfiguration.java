@@ -18,35 +18,34 @@
 package de.tudarmstadt.ukp.inception.htmleditor.config;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import de.tudarmstadt.ukp.inception.htmleditor.HtmlAnnotationEditorFactory;
-import de.tudarmstadt.ukp.inception.htmleditor.HtmlFormatSupport;
-import de.tudarmstadt.ukp.inception.htmleditor.LegacyHtmlFormatSupport;
+import de.tudarmstadt.ukp.inception.htmleditor.annotatorjs.AnnotatorJsHtmlAnnotationEditorFactory;
+import de.tudarmstadt.ukp.inception.htmleditor.docview.HtmlDocumentIFrameViewFactory;
 
 /**
  * Provides support for an HTML-oriented annotation editor.
  */
+@ConditionalOnWebApplication
 @Configuration
-@ConditionalOnProperty(prefix = "ui.html", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class HtmlAnnotationEditorSupportAutoConfiguration
 {
+    @ConditionalOnProperty(prefix = "ui.html-annotatorjs", name = "enabled", //
+            havingValue = "true", matchIfMissing = false)
     @Bean
-    public HtmlAnnotationEditorFactory htmlAnnotationEditorFactory()
+    public AnnotatorJsHtmlAnnotationEditorFactory htmlAnnotationEditorFactory()
     {
-        return new HtmlAnnotationEditorFactory();
+        return new AnnotatorJsHtmlAnnotationEditorFactory();
     }
 
+    @ConditionalOnProperty(prefix = "ui.html.legacy-iframe-view", name = "enabled", //
+            havingValue = "true", matchIfMissing = false)
     @Bean
-    public HtmlFormatSupport htmlFormatSupport()
+    @Deprecated
+    public HtmlDocumentIFrameViewFactory htmlDocumentIFrameViewFactory()
     {
-        return new HtmlFormatSupport();
-    }
-
-    @Bean
-    public LegacyHtmlFormatSupport legacyHtmlFormatSupport()
-    {
-        return new LegacyHtmlFormatSupport();
+        return new HtmlDocumentIFrameViewFactory();
     }
 }

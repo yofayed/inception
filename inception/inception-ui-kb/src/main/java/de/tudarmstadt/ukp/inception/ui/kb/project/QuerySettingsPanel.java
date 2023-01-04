@@ -17,6 +17,8 @@
  */
 package de.tudarmstadt.ukp.inception.ui.kb.project;
 
+import static java.util.stream.Collectors.toList;
+
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.ajax.markup.html.form.AjaxCheckBox;
 import org.apache.wicket.markup.html.form.CheckBox;
@@ -30,7 +32,6 @@ import org.apache.wicket.model.Model;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 import org.eclipse.rdf4j.model.IRI;
 
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.select.BootstrapSelect;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior;
 import de.tudarmstadt.ukp.inception.kb.IriConstants;
 import de.tudarmstadt.ukp.inception.kb.KnowledgeBaseService;
@@ -47,6 +48,7 @@ public class QuerySettingsPanel
 
     private final TextField<Integer> queryLimitField;
     private final CheckBox maxQueryLimitCheckBox;
+    private final CheckBox useFuzzyCheckBox;
     private final CompoundPropertyModel<KnowledgeBaseWrapper> kbModel;
 
     public QuerySettingsPanel(String id, CompoundPropertyModel<KnowledgeBaseWrapper> aModel)
@@ -58,10 +60,12 @@ public class QuerySettingsPanel
 
         queryLimitField = queryLimitField("maxResults", kbModel.bind("kb.maxResults"));
         add(queryLimitField);
+        useFuzzyCheckBox = new CheckBox("useFuzzy", kbModel.bind("kb.useFuzzy"));
+        useFuzzyCheckBox.setOutputMarkupId(true);
+        add(useFuzzyCheckBox);
         maxQueryLimitCheckBox = maxQueryLimitCheckbox("maxQueryLimit", Model.of(false));
         add(maxQueryLimitCheckBox);
         add(ftsField("fullTextSearchIri", "kb.fullTextSearchIri"));
-
     }
 
     private CheckBox maxQueryLimitCheckbox(String id, IModel<Boolean> aModel)
@@ -109,10 +113,10 @@ public class QuerySettingsPanel
         return queryLimit;
     }
 
-    private DropDownChoice<IRI> ftsField(String aId, String aProperty)
+    private DropDownChoice<String> ftsField(String aId, String aProperty)
     {
-        DropDownChoice<IRI> ftsField = new BootstrapSelect<>(aId, kbModel.bind(aProperty),
-                IriConstants.FTS_IRIS);
+        DropDownChoice<String> ftsField = new DropDownChoice<>(aId, kbModel.bind(aProperty),
+                IriConstants.FTS_IRIS.stream().map(IRI::stringValue).collect(toList()));
         ftsField.setOutputMarkupId(true);
         ftsField.setNullValid(true);
         return ftsField;

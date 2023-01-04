@@ -20,6 +20,8 @@ package de.tudarmstadt.ukp.clarin.webanno.api;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,12 +31,16 @@ import javax.persistence.NoResultException;
 import org.apache.uima.UIMAException;
 import org.apache.uima.cas.CAS;
 import org.apache.uima.resource.metadata.TypeSystemDescription;
+import org.apache.wicket.validation.ValidationError;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import de.tudarmstadt.ukp.clarin.webanno.api.casstorage.CasAccessMode;
+import de.tudarmstadt.ukp.clarin.webanno.api.casstorage.ConcurentCasModificationException;
+import de.tudarmstadt.ukp.clarin.webanno.api.config.RepositoryProperties;
+import de.tudarmstadt.ukp.clarin.webanno.api.event.AnnotationStateChangeEvent;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocument;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocumentState;
-import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocumentStateTransition;
+import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocumentStateChangeFlag;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocumentState;
@@ -43,13 +49,13 @@ import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
 
 public interface DocumentService
 {
-    String SERVICE_NAME = "documentService";
-
     /**
      * The Directory where the {@link SourceDocument}s and {@link AnnotationDocument}s stored
      *
      * @return the directory.
+     * @deprecated Use {@link RepositoryProperties#getPath()} instead.
      */
+    @Deprecated
     File getDir();
 
     // --------------------------------------------------------------------------------------------
@@ -64,9 +70,10 @@ public interface DocumentService
      *
      * @param document
      *            {@link SourceDocument} to be created
+     * @return the source document
      */
     @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_USER','ROLE_REMOTE')")
-    void createSourceDocument(SourceDocument document);
+    SourceDocument createSourceDocument(SourceDocument document);
 
     /**
      * Check if a Source document with this same name exist in the project. The caller method then
@@ -125,6 +132,9 @@ public interface DocumentService
      */
     List<SourceDocument> listSourceDocuments(Project aProject);
 
+    List<SourceDocument> listSourceDocumentsInState(Project aProject,
+            SourceDocumentState... aStates);
+
     /**
      * ROLE_ADMINs or project admins can remove source documents from a project. removing a a source
      * document also removes an annotation document related to that document
@@ -155,8 +165,8 @@ public interface DocumentService
         throws IOException, UIMAException;
 
     /**
-     * Upload a SourceDocument, obtained as Inputstream, such as from remote API Zip folder to a
-     * repository directory. This way we don't need to create the file to a temporary folder
+     * Upload a SourceDocument, obtained as {@link InputStream}, such as from remote API ZIP folder
+     * to a repository directory. This way we don't need to create the file to a temporary folder
      *
      * @param file
      *            the file.
@@ -181,10 +191,8 @@ public interface DocumentService
      * @param aDocument
      *            the source document.
      * @return the source document folder.
-     * @throws IOException
-     *             if an I/O error occurs.
      */
-    File getDocumentFolder(SourceDocument aDocument) throws IOException;
+    File getSourceDocumentFolder(SourceDocument aDocument);
 
     SourceDocumentState transitionSourceDocumentState(SourceDocument aDocument,
             SourceDocumentStateTransition aTransition);
@@ -197,52 +205,72 @@ public interface DocumentService
     // --------------------------------------------------------------------------------------------
 
     /**
-     * creates the {@link AnnotationDocument } object in the database.
+     * Creates the {@link AnnotationDocument} object in the database.
      *
      * @param annotationDocument
-     *            {@link AnnotationDocument} comprises of the the name of the {@link SourceDocument}
-     *            , id of {@link SourceDocument}, id of the {@link Project}, and id of {@link User}
+     *            {@link AnnotationDocument} comprises of the the name of the
+     *            {@link SourceDocument}, id of {@link SourceDocument}, id of the {@link Project},
+     *            and id of {@link User}
+     * @return the annotation document.
      */
     @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_USER')")
-    void createAnnotationDocument(AnnotationDocument annotationDocument);
+    AnnotationDocument createAnnotationDocument(AnnotationDocument annotationDocument);
 
     /**
-     * Creates an annotation document. The {@link AnnotationDocument} is stored in the
-     * webanno.home/project/Project.id/document/document.id/annotation/username.ser. annotated
-     * documents are stored per project, user and document
+     * Saves the annotations from the CAS to the storage.
      *
      * @param aCas
      *            the CAS.
-     * @param annotationDocument
+     * @param aAnnotationDocument
      *            the annotation document.
+     * @param aExplicitAnnotatorUserAction
+     *            indicate that the CAS is written as the result of an explicit annotator user
+     *            action (i.e. not as a result of a third person or implicitly by the system).
      * @throws IOException
      *             if an I/O error occurs.
      */
     @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_USER')")
-    void writeAnnotationCas(CAS aCas, AnnotationDocument annotationDocument,
-            boolean aUpdateTimestamp)
+    void writeAnnotationCas(CAS aCas, AnnotationDocument aAnnotationDocument,
+            boolean aExplicitAnnotatorUserAction)
         throws IOException;
 
     /**
-     * Creates an annotation document. The {@link AnnotationDocument} is stored in the
-     * webanno.home/project/Project.id/document/document.id/annotation/username.ser. annotated
-     * documents are stored per project, user and document
+     * Saves the annotations from the CAS to the storage.
      *
      * @param aCas
      *            the CAS.
-     * @param document
+     * @param aDocument
      *            the source document.
-     * @param user
+     * @param aUser
      *            The User who perform this operation
+     * @param aExplicitAnnotatorUserAction
+     *            indicate that the CAS is written as the result of an explicit annotator user
+     *            action (i.e. not as a result of a third person or implicitly by the system).
      * @throws IOException
      *             if an I/O error occurs.
      */
     @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_USER')")
-    void writeAnnotationCas(CAS aCas, SourceDocument document, User user, boolean aUpdateTimestamp)
+    void writeAnnotationCas(CAS aCas, SourceDocument aDocument, User aUser,
+            boolean aExplicitAnnotatorUserAction)
         throws IOException;
 
-    void writeAnnotationCas(CAS aCas, SourceDocument document, String user,
-            boolean aUpdateTimestamp)
+    /**
+     * Saves the annotations from the CAS to the storage.
+     *
+     * @param aCas
+     *            the CAS.
+     * @param aDocument
+     *            the source document.
+     * @param aUser
+     *            The User who perform this operation
+     * @param aExplicitAnnotatorUserAction
+     *            indicate that the CAS is written as the result of an explicit annotator user
+     *            action (i.e. not as a result of a third person or implicitly by the system).
+     * @throws IOException
+     *             if an I/O error occurs.
+     */
+    void writeAnnotationCas(CAS aCas, SourceDocument aDocument, String aUser,
+            boolean aExplicitAnnotatorUserAction)
         throws IOException;
 
     /**
@@ -252,13 +280,17 @@ public interface DocumentService
      *            the source document.
      * @param aUser
      *            The User who perform this operation
+     * @param aFlags
+     *            optional flags controlling the operation
      * @throws UIMAException
      *             if a data error occurs.
      * @throws IOException
      *             if an I/O error occurs.
      */
     @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_USER')")
-    void resetAnnotationCas(SourceDocument aDocument, User aUser) throws UIMAException, IOException;
+    void resetAnnotationCas(SourceDocument aDocument, User aUser,
+            AnnotationDocumentStateChangeFlag... aFlags)
+        throws UIMAException, IOException;
 
     /**
      * A Method that checks if there is already an annotation document created for the source
@@ -300,18 +332,11 @@ public interface DocumentService
      */
     boolean existsCas(SourceDocument sourceDocument, String username) throws IOException;
 
-    boolean existsAnnotationCas(AnnotationDocument annotationDocument) throws IOException;
+    boolean existsCas(AnnotationDocument annotationDocument) throws IOException;
 
-    /**
-     * Export a Serialized CAS annotation document from the file system
-     *
-     * @param document
-     *            the source document.
-     * @param user
-     *            the username.
-     * @return the serialized CAS file.
-     */
-    File getCasFile(SourceDocument document, String user) throws IOException;
+    void exportCas(SourceDocument aDocument, String aUser, OutputStream aStream) throws IOException;
+
+    void importCas(SourceDocument aDocument, String aUser, InputStream aStream) throws IOException;
 
     /**
      * Get the annotation document.
@@ -412,6 +437,15 @@ public interface DocumentService
             CasAccessMode aMode)
         throws IOException;
 
+    Map<String, CAS> readAllCasesSharedNoUpgrade(List<AnnotationDocument> aDocuments)
+        throws IOException;
+
+    Map<String, CAS> readAllCasesSharedNoUpgrade(SourceDocument aDoc, Collection<User> aUsers)
+        throws IOException;
+
+    Map<String, CAS> readAllCasesSharedNoUpgrade(SourceDocument aDoc, String... aUsernames)
+        throws IOException;
+
     /**
      * Read the initial CAS for the given document. If the CAS does not exist then it is created.
      * This method does not perform an upgrade of the type@Override system in the CAS.
@@ -475,6 +509,27 @@ public interface DocumentService
         throws IOException;
 
     /**
+     * Read the initial CAS for the given document. If the CAS does not exist then it is created.
+     * This method is good for bulk-importing because it accepts the project type system as a
+     * parameter instead of collecting it on every call.
+     * 
+     * @param aDocument
+     *            the source document.
+     * @param aUpgradeMode
+     *            whether to upgrade the type system in the CAS.
+     * @param aAccessMode
+     *            CAS access mode.
+     * @param aFullProjectTypeSystem
+     *            the project type system.
+     * @return the CAS.
+     * @throws IOException
+     *             if there was a problem loading the CAS.
+     */
+    CAS createOrReadInitialCas(SourceDocument aDocument, CasUpgradeMode aUpgradeMode,
+            CasAccessMode aAccessMode, TypeSystemDescription aFullProjectTypeSystem)
+        throws IOException;
+
+    /**
      * List all the {@link AnnotationDocument annotation documents} in a given project.
      * <p>
      * Note that this method does may not return an {@link AnnotationDocument annotation document}
@@ -485,10 +540,18 @@ public interface DocumentService
      * document} if the user owning the document does not actually exist in the system! It does not
      * matter whether the user is enabled or not.
      * 
+     * @param aProject
+     *            the project
      * @return {@link AnnotationDocument}
      * @see #createOrGetAnnotationDocument(SourceDocument, User)
      */
     List<AnnotationDocument> listAnnotationDocuments(Project aProject);
+
+    List<AnnotationDocument> listAnnotationDocumentsInState(Project aProject,
+            AnnotationDocumentState... aStates);
+
+    List<AnnotationDocument> listAnnotationDocumentsWithStateForUser(Project aProject, User aUser,
+            AnnotationDocumentState aState);
 
     /**
      * List all the {@link AnnotationDocument annotation documents} for a given
@@ -529,15 +592,6 @@ public interface DocumentService
     List<AnnotationDocument> listAnnotationDocuments(Project project, User user);
 
     /**
-     * Number of expected annotation documents in this project (numUser X document - Ignored)
-     *
-     * @param project
-     *            the project.
-     * @return the number of annotation documents.
-     */
-    int numberOfExpectedAnnotationDocuments(Project project);
-
-    /**
      * List all annotation documents in a project that are already closed. used to compute overall
      * project progress
      *
@@ -549,7 +603,7 @@ public interface DocumentService
 
     /**
      * List all annotation documents for a given source document that are already closed.
-     *
+     * 
      * @param aDocument
      *            a source document.
      * @return the annotation documents.
@@ -557,7 +611,7 @@ public interface DocumentService
     List<AnnotationDocument> listFinishedAnnotationDocuments(SourceDocument aDocument);
 
     /**
-     * List all annotation documents for this source document (including in active and delted user
+     * List all annotation documents for this source document (including in active and deleted user
      * annotation and those created by project admins or super admins for Test purpose. This method
      * is called when a source document (or Project) is deleted so that associated annotation
      * documents also get removed.
@@ -601,6 +655,8 @@ public interface DocumentService
     boolean existsFinishedAnnotation(SourceDocument document);
 
     /**
+     * @param project
+     *            the project
      * @return if at least one {@link AnnotationDocument} is finished in this project.
      */
     boolean existsFinishedAnnotation(Project project);
@@ -614,6 +670,12 @@ public interface DocumentService
     void removeAnnotationDocument(AnnotationDocument annotationDocument);
 
     AnnotationDocument createOrGetAnnotationDocument(SourceDocument aDocument, User aUser);
+
+    List<AnnotationDocument> createOrGetAnnotationDocuments(SourceDocument aDocument,
+            Collection<User> aUsers);
+
+    List<AnnotationDocument> createOrGetAnnotationDocuments(Collection<SourceDocument> aDocuments,
+            User aUsers);
 
     /**
      * Returns the annotatable {@link SourceDocument source documents} from the given project for
@@ -651,13 +713,21 @@ public interface DocumentService
     Map<SourceDocument, AnnotationDocument> listAllDocuments(Project aProject, User aUser);
 
     AnnotationDocumentState setAnnotationDocumentState(AnnotationDocument aDocument,
-            AnnotationDocumentState aState);
+            AnnotationDocumentState aState, AnnotationDocumentStateChangeFlag... aFlags);
 
+    /**
+     * Sets the state of multiple annotation documents at once. This method does not generate
+     * {@link AnnotationStateChangeEvent} events. This means in particular that webhooks for
+     * annotation document changes will not fire and that workload managers will not know that they
+     * need to recalculate the document and project states.
+     * 
+     * @param aDocuments
+     *            the documents to update
+     * @param aState
+     *            the state to update the documents to
+     */
     void bulkSetAnnotationDocumentState(Iterable<AnnotationDocument> aDocuments,
             AnnotationDocumentState aState);
-
-    AnnotationDocumentState transitionAnnotationDocumentState(AnnotationDocument aDocument,
-            AnnotationDocumentStateTransition aTransition);
 
     /**
      * Check if any curation documents exists in the given project.
@@ -669,23 +739,48 @@ public interface DocumentService
     boolean existsCurationDocument(Project aProject);
 
     /**
-     * Fetches the time at which the CAS was last changed on disk. If the CAS does not exist yet, an
-     * empty optional is returned.
+     * @return the time at which the CAS was last changed on disk. If the CAS does not exist yet, an
+     *         empty optional is returned.
+     * @param aDocument
+     *            the document for which to retrieve the timestamp
+     * @param aUsername
+     *            the annotator user owning the annotations for which to retrieve the timestamp
+     * @throws IOException
+     *             if there was an I/O-level problem
      */
     Optional<Long> getAnnotationCasTimestamp(SourceDocument aDocument, String aUsername)
         throws IOException;
 
+    Optional<Long> verifyAnnotationCasTimestamp(SourceDocument aDocument, String aUsername,
+            long aExpectedTimeStamp, String aContextAction)
+        throws IOException, ConcurentCasModificationException;
+
     boolean existsInitialCas(SourceDocument aDocument) throws IOException;
 
     /**
-     * Retrieve overall number of source documents
+     * @return overall number of source documents
      */
     long countSourceDocuments();
 
     /**
-     * Retrieve overall number of annotation documents
+     * @return overall number of annotation documents
      */
     long countAnnotationDocuments();
 
     void upgradeAllAnnotationDocuments(Project aProject) throws IOException;
+
+    Map<AnnotationDocumentState, Long> getAnnotationDocumentStats(SourceDocument aDocument);
+
+    Map<AnnotationDocumentState, Long> getAnnotationDocumentStats(SourceDocument aDocument,
+            List<AnnotationDocument> aAllAnnotationDocumentsInProject,
+            List<User> aUsersWithPermission);
+
+    SourceDocumentStateStats getSourceDocumentStats(Project aProject);
+
+    void exportSourceDocuments(OutputStream aOs, List<SourceDocument> aSelectedDocuments)
+        throws IOException;
+
+    boolean isValidDocumentName(String aDocumentName);
+
+    List<ValidationError> validateDocumentName(String aName);
 }

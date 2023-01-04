@@ -52,7 +52,7 @@ import org.springframework.context.event.EventListener;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.RepositoryProperties;
+import de.tudarmstadt.ukp.clarin.webanno.api.config.RepositoryProperties;
 import de.tudarmstadt.ukp.inception.conceptlinking.config.EntityLinkingProperties;
 import de.tudarmstadt.ukp.inception.conceptlinking.model.CandidateEntity;
 import de.tudarmstadt.ukp.inception.conceptlinking.model.Property;
@@ -257,6 +257,8 @@ public class SemanticSignatureFeatureGenerator
 
     /**
      *
+     * @param aConn
+     *            a repository connection
      * @param aIri
      *            an IRI, e.g. "http://www.wikidata.org/entity/Q3"
      * @param aLimit

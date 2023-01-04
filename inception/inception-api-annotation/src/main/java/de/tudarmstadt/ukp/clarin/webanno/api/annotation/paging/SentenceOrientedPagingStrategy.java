@@ -27,15 +27,17 @@ import org.apache.uima.cas.text.AnnotationFS;
 import org.apache.uima.fit.util.CasUtil;
 import org.apache.uima.fit.util.FSUtil;
 import org.apache.wicket.Component;
+import org.apache.wicket.Page;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.model.IModel;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotatorState;
 import de.tudarmstadt.ukp.clarin.webanno.api.annotation.page.AnnotationPageBase;
 import de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Sentence;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
+import de.tudarmstadt.ukp.inception.rendering.paging.Unit;
 
 public class SentenceOrientedPagingStrategy
-    implements PagingStrategy
+    extends PagingStrategy_ImplBase
 {
     private static final long serialVersionUID = -3983123604003839467L;
 
@@ -69,7 +71,13 @@ public class SentenceOrientedPagingStrategy
     {
         // If there is a sentence ID, then make it accessible to the user via a sentence-level
         // comment.
-        String sentId = FSUtil.getFeature(aSentence, "id", String.class);
+        String sentId = null;
+        try {
+            sentId = FSUtil.getFeature(aSentence, "id", String.class);
+        }
+        catch (IllegalArgumentException e) {
+            // Ignore if there is no "id" feature on the sentence
+        }
         return new Unit(sentId, aIndex, aSentence.getBegin(), aSentence.getEnd());
     }
 
@@ -88,8 +96,8 @@ public class SentenceOrientedPagingStrategy
     }
 
     @Override
-    public DefaultPagingNavigator createPageNavigator(String aId, AnnotationPageBase aPage)
+    public DefaultPagingNavigator createPageNavigator(String aId, Page aPage)
     {
-        return new DefaultPagingNavigator(aId, aPage);
+        return new DefaultPagingNavigator(aId, (AnnotationPageBase) aPage);
     }
 }

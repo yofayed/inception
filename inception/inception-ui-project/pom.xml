@@ -20,7 +20,7 @@
   <parent>
     <groupId>de.tudarmstadt.ukp.inception.app</groupId>
     <artifactId>inception-app</artifactId>
-    <version>0.20.0-SNAPSHOT</version>
+    <version>27.0-SNAPSHOT</version>
   </parent>
   <artifactId>inception-ui-project</artifactId>
   <name>INCEpTION - UI - Project</name>
@@ -35,22 +35,25 @@
       <artifactId>commons-lang3</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-collections4</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>commons-collections</groupId>
-      <artifactId>commons-collections</artifactId>
-    </dependency>
-
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
     </dependency>
 
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-project</artifactId>
+      <artifactId>inception-project-initializers</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-project-export</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-io-text</artifactId>
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
@@ -58,15 +61,15 @@
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-curation-legacy</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-api-formats</artifactId>
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-api-annotation</artifactId>
+      <artifactId>inception-api-render</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-api-schema</artifactId>
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
@@ -98,9 +101,9 @@
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-model-export</artifactId>
+      <artifactId>inception-api-annotation</artifactId>
     </dependency>
-
+    
     <!-- UIMA dependencies -->
 
     <dependency>
@@ -134,13 +137,7 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot</artifactId>
     </dependency>
-    <!-- SPRING SECURITY -->
-
-    <dependency>
-      <groupId>org.springframework.security</groupId>
-      <artifactId>spring-security-core</artifactId>
-    </dependency>
-
+        
     <!-- WICKET DEPENDENCIES -->
     <dependency>
       <groupId>org.apache.wicket</groupId>
@@ -184,15 +181,15 @@
     </dependency>
     <dependency>
       <groupId>org.wicketstuff</groupId>
-      <artifactId>wicketstuff-progressbar</artifactId>
+      <artifactId>wicketstuff-input-events</artifactId>
     </dependency>
     <dependency>
       <groupId>org.wicketstuff</groupId>
       <artifactId>wicketstuff-annotation</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.danekja</groupId>
-      <artifactId>jdk-serializable-functional</artifactId>
+      <groupId>org.wicketstuff</groupId>
+      <artifactId>wicketstuff-annotationeventdispatcher</artifactId>
     </dependency>
 
     <dependency>

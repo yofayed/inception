@@ -41,12 +41,14 @@ import javax.persistence.Temporal;
 import javax.persistence.TemporalType;
 import javax.persistence.Transient;
 
+import org.apache.commons.lang3.StringUtils;
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import de.tudarmstadt.ukp.clarin.webanno.security.Realm;
 import de.tudarmstadt.ukp.clarin.webanno.support.ApplicationContextProvider;
 
 /**
@@ -68,11 +70,17 @@ public class User
 
     private @Autowired @Transient transient PasswordEncoder passwordEncoder;
 
-    @Id
-    private String username;
+    private @Id String username;
 
     private String password;
 
+    @Column(nullable = true)
+    private String realm;
+
+    @Column(nullable = true)
+    private String uiName;
+
+    @Column(name = "enabled", nullable = false)
     private boolean enabled;
 
     @Temporal(TemporalType.TIMESTAMP)
@@ -103,25 +111,52 @@ public class User
         // No-args constructor required for ORM.
     }
 
+    public User(String aName, String aUiName)
+    {
+        username = aName;
+        uiName = aName;
+        enabled = true;
+    }
+
     /**
      * This constructor is mainly intended for testing.
+     * 
+     * @param aName
+     *            used as the username <b>and</b> the UI name!
+     * @param aRoles
+     *            roles of the user
      */
     public User(String aName, Role... aRoles)
     {
         username = aName;
+        uiName = aName;
         enabled = true;
         if (aRoles != null) {
             roles = new HashSet<>(asList(aRoles));
         }
     }
 
-    private String encodePassword(String aPassword)
+    private User(Builder builder)
+    {
+        this.username = builder.username;
+        this.password = builder.password;
+        this.realm = builder.realm;
+        this.uiName = builder.uiName;
+        this.enabled = builder.enabled;
+        this.lastLogin = builder.lastLogin;
+        this.email = builder.email;
+        this.roles = builder.roles;
+        this.created = builder.created;
+        this.updated = builder.updated;
+    }
+
+    private synchronized PasswordEncoder getPasswordEncoder()
     {
         if (passwordEncoder == null) {
             ApplicationContext context = ApplicationContextProvider.getApplicationContext();
             passwordEncoder = context.getBean("passwordEncoder", PasswordEncoder.class);
         }
-        return passwordEncoder.encode(aPassword);
+        return passwordEncoder;
     }
 
     @Override
@@ -174,7 +209,36 @@ public class User
 
     public void setPassword(String aPassword)
     {
-        password = encodePassword(aPassword);
+        password = getPasswordEncoder().encode(aPassword);
+    }
+
+    public void setEncodedPassword(String aPassword)
+    {
+        password = aPassword;
+    }
+
+    public String getRealm()
+    {
+        return realm;
+    }
+
+    public void setRealm(String aRealm)
+    {
+        realm = aRealm;
+    }
+
+    public String getUiName()
+    {
+        if (StringUtils.isBlank(uiName)) {
+            return username;
+        }
+
+        return uiName;
+    }
+
+    public void setUiName(String aUiName)
+    {
+        uiName = aUiName;
     }
 
     public boolean isEnabled()
@@ -192,9 +256,9 @@ public class User
         return email;
     }
 
-    public void setEmail(String email)
+    public void setEmail(String aEMail)
     {
-        this.email = email;
+        email = aEMail;
     }
 
     public Set<Role> getRoles()
@@ -202,9 +266,14 @@ public class User
         return roles;
     }
 
-    public void setRoles(Set<Role> roles)
+    public void setRoles(Set<Role> aRoles)
     {
-        this.roles = roles;
+        if (aRoles != null) {
+            roles = new HashSet<>(aRoles);
+        }
+        else {
+            roles = new HashSet<>();
+        }
     }
 
     public Date getLastLogin()
@@ -222,7 +291,7 @@ public class User
     {
         // When we import data, we set the fields via setters and don't want these to be
         // overwritten by this event handler.
-        if (created != null) {
+        if (created == null) {
             created = new Date();
             updated = created;
         }
@@ -252,5 +321,111 @@ public class User
     public void setUpdated(Date aUpdated)
     {
         updated = aUpdated;
+    }
+
+    @Override
+    public String toString()
+    {
+        return "[" + username + "]";
+    }
+
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
+    public static final class Builder
+    {
+        private String username;
+        private String password;
+        private String realm;
+        private String uiName;
+        private boolean enabled;
+        private Date lastLogin;
+        private String email;
+        private Set<Role> roles = new HashSet<>();
+        private Date created;
+        private Date updated;
+
+        private Builder()
+        {
+        }
+
+        public Builder withUsername(String aUsername)
+        {
+            this.username = aUsername;
+            return this;
+        }
+
+        public Builder withPassword(String aPassword)
+        {
+            this.password = aPassword;
+            return this;
+        }
+
+        public Builder withRealm(String aRealm)
+        {
+            this.realm = aRealm;
+            return this;
+        }
+
+        public Builder withRealm(Realm aRealm)
+        {
+            this.realm = aRealm.getId();
+            return this;
+        }
+
+        public Builder withUiName(String aUiName)
+        {
+            this.uiName = aUiName;
+            return this;
+        }
+
+        public Builder withEnabled(boolean aEnabled)
+        {
+            this.enabled = aEnabled;
+            return this;
+        }
+
+        public Builder withLastLogin(Date aLastLogin)
+        {
+            this.lastLogin = aLastLogin;
+            return this;
+        }
+
+        public Builder withEmail(String aEmail)
+        {
+            this.email = aEmail;
+            return this;
+        }
+
+        public Builder withRoles(Role... aRoles)
+        {
+            this.roles = Set.of(aRoles);
+            return this;
+        }
+
+        public Builder withRoles(Set<Role> aRoles)
+        {
+            this.roles = aRoles;
+            return this;
+        }
+
+        public Builder withCreated(Date aCreated)
+        {
+            this.created = aCreated;
+            return this;
+        }
+
+        public Builder withUpdated(Date aUpdated)
+        {
+            this.updated = aUpdated;
+            return this;
+        }
+
+        public User build()
+        {
+            return new User(this);
+        }
     }
 }

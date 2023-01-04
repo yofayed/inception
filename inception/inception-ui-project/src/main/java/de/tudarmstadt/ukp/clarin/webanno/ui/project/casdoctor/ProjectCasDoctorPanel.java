@@ -17,27 +17,27 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.ui.project.casdoctor;
 
-import static de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst.CURATION_USER;
-import static de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst.INITIAL_CAS_PSEUDO_USER;
 import static de.tudarmstadt.ukp.clarin.webanno.api.casstorage.CasAccessMode.UNMANAGED_NON_INITIALIZING_ACCESS;
 import static de.tudarmstadt.ukp.clarin.webanno.model.SourceDocumentState.CURATION_FINISHED;
 import static de.tudarmstadt.ukp.clarin.webanno.model.SourceDocumentState.CURATION_IN_PROGRESS;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.CURATION_USER;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.INITIAL_CAS_PSEUDO_USER;
 import static java.util.Arrays.asList;
+import static java.util.stream.Collectors.toList;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.apache.uima.UIMAException;
 import org.apache.uima.cas.CAS;
 import org.apache.wicket.ajax.AjaxRequestTarget;
+import org.apache.wicket.feedback.IFeedback;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.form.AbstractChoice.LabelPosition;
 import org.apache.wicket.markup.html.form.CheckBoxMultipleChoice;
-import org.apache.wicket.markup.html.form.ChoiceRenderer;
 import org.apache.wicket.markup.html.form.Form;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.ListView;
@@ -48,18 +48,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import de.tudarmstadt.ukp.clarin.webanno.api.CasStorageService;
+import de.tudarmstadt.ukp.clarin.webanno.api.DocumentImportExportService;
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
-import de.tudarmstadt.ukp.clarin.webanno.api.ImportExportService;
-import de.tudarmstadt.ukp.clarin.webanno.curation.storage.CurationDocumentService;
 import de.tudarmstadt.ukp.clarin.webanno.diag.CasDoctor;
-import de.tudarmstadt.ukp.clarin.webanno.diag.repairs.Repair;
+import de.tudarmstadt.ukp.clarin.webanno.diag.ChecksRegistry;
+import de.tudarmstadt.ukp.clarin.webanno.diag.RepairsRegistry;
 import de.tudarmstadt.ukp.clarin.webanno.diag.repairs.Repair.Safe;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocument;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
-import de.tudarmstadt.ukp.clarin.webanno.support.ApplicationContextProvider;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxButton;
-import de.tudarmstadt.ukp.clarin.webanno.support.logging.LogLevel;
 import de.tudarmstadt.ukp.clarin.webanno.support.logging.LogMessage;
 import de.tudarmstadt.ukp.clarin.webanno.ui.core.settings.ProjectSettingsPanelBase;
 
@@ -71,9 +69,10 @@ public class ProjectCasDoctorPanel
     private static final long serialVersionUID = 2116717853865353733L;
 
     private @SpringBean DocumentService documentService;
-    private @SpringBean CurationDocumentService curationService;
     private @SpringBean CasStorageService casStorageService;
-    private @SpringBean ImportExportService importExportService;
+    private @SpringBean DocumentImportExportService importExportService;
+    private @SpringBean RepairsRegistry repairsRegistry;
+    private @SpringBean ChecksRegistry checksRegistry;
 
     // Data properties
     private FormModel formModel = new FormModel();
@@ -87,11 +86,10 @@ public class ProjectCasDoctorPanel
         Form<FormModel> form = new Form<>("casDoctorForm", PropertyModel.of(this, "formModel"));
         add(form);
 
-        CheckBoxMultipleChoice<Class<? extends Repair>> repairs = new CheckBoxMultipleChoice<>(
-                "repairs");
+        CheckBoxMultipleChoice<String> repairs = new CheckBoxMultipleChoice<>("repairs");
         repairs.setModel(PropertyModel.of(this, "formModel.repairs"));
-        repairs.setChoices(CasDoctor.scanRepairs());
-        repairs.setChoiceRenderer(new ChoiceRenderer<>("simpleName"));
+        repairs.setChoices(repairsRegistry.getExtensions().stream() //
+                .map(r -> r.getId()).collect(toList()));
         repairs.setPrefix("<div class=\"checkbox\">");
         repairs.setSuffix("</div>");
         repairs.setLabelPosition(LabelPosition.WRAP_AFTER);
@@ -146,10 +144,9 @@ public class ProjectCasDoctorPanel
     private void actionRepair(AjaxRequestTarget aTarget, Form<?> aForm)
         throws IOException, UIMAException, ClassNotFoundException
     {
-        CasDoctor casDoctor = new CasDoctor();
-        casDoctor.setApplicationContext(ApplicationContextProvider.getApplicationContext());
+        CasDoctor casDoctor = new CasDoctor(checksRegistry, repairsRegistry);
         casDoctor.setFatalChecks(false);
-        casDoctor.setRepairClasses(formModel.repairs);
+        casDoctor.setActiveRepairs(formModel.repairs.toArray(String[]::new));
 
         Project project = getModelObject();
 
@@ -167,9 +164,9 @@ public class ProjectCasDoctorPanel
                             true);
                 }
                 catch (Exception e) {
-                    messageSet.messages.add(new LogMessage(getClass(), LogLevel.ERROR,
-                            "Error repairing initial CAS for [" + sd.getName() + "]: "
-                                    + e.getMessage()));
+                    messageSet.messages.add(
+                            LogMessage.error(getClass(), "Error repairing initial CAS for [%s]: %s",
+                                    sd.getName(), e.getMessage()));
                     LOG.error("Error repairing initial CAS for [{}]", sd.getName(), e);
                 }
 
@@ -201,9 +198,9 @@ public class ProjectCasDoctorPanel
                     }
                 }
                 catch (Exception e) {
-                    messageSet.messages.add(new LogMessage(getClass(), LogLevel.ERROR,
-                            "Error checking annotations for [" + CURATION_USER + "] for ["
-                                    + sd.getName() + "]: " + e.getMessage()));
+                    messageSet.messages.add(LogMessage.error(getClass(),
+                            "Error checking annotations for [%s] for [%s]: %s", CURATION_USER,
+                            sd.getName(), e.getMessage()));
                     LOG.error("Error checking annotations for [{}] for [{}]", CURATION_USER,
                             sd.getName(), e);
                 }
@@ -214,7 +211,7 @@ public class ProjectCasDoctorPanel
 
             // Repair regular annotator CASes
             for (AnnotationDocument ad : documentService.listAnnotationDocuments(sd)) {
-                if (documentService.existsAnnotationCas(ad)) {
+                if (documentService.existsCas(ad)) {
                     LogMessageSet messageSet = new LogMessageSet(
                             sd.getName() + " [" + ad.getUser() + "]");
                     try {
@@ -225,9 +222,9 @@ public class ProjectCasDoctorPanel
                                 true);
                     }
                     catch (Exception e) {
-                        messageSet.messages.add(new LogMessage(getClass(), LogLevel.ERROR,
-                                "Error repairing annotations of user [" + ad.getUser() + "] for ["
-                                        + sd.getName() + "]: " + e.getMessage()));
+                        messageSet.messages.add(LogMessage.error(getClass(),
+                                "Error repairing annotations of user [%s] for [%s]: %s",
+                                ad.getUser(), sd.getName(), e.getMessage()));
                         LOG.error("Error repairing annotations of user [{}] for [{}]", ad.getUser(),
                                 sd.getName(), e);
                     }
@@ -243,30 +240,31 @@ public class ProjectCasDoctorPanel
     private void actionCheck(AjaxRequestTarget aTarget, Form<?> aForm)
         throws IOException, UIMAException, ClassNotFoundException
     {
-        CasDoctor casDoctor = new CasDoctor();
-        casDoctor.setApplicationContext(ApplicationContextProvider.getApplicationContext());
-        casDoctor.setFatalChecks(false);
-        casDoctor.setCheckClasses(CasDoctor.scanChecks());
+        CasDoctor casDoctor = new CasDoctor(checksRegistry, repairsRegistry);
+        casDoctor.setActiveChecks(
+                checksRegistry.getExtensions().stream().map(c -> c.getId()).toArray(String[]::new));
 
         Project project = getModelObject();
 
         formModel.messageSets = new ArrayList<>();
 
+        int objectCount = 0;
         for (SourceDocument sd : documentService.listSourceDocuments(project)) {
             // Check INITIAL CAS
             {
                 LogMessageSet messageSet = new LogMessageSet(sd.getName() + " [INITIAL]");
 
                 try {
+                    objectCount++;
                     casStorageService.forceActionOnCas(sd, INITIAL_CAS_PSEUDO_USER,
                             (doc, user) -> createOrReadInitialCasWithoutSaving(doc, messageSet),
                             (cas) -> casDoctor.analyze(project, cas, messageSet.messages), //
                             false);
                 }
                 catch (Exception e) {
-                    messageSet.messages.add(new LogMessage(getClass(), LogLevel.ERROR,
-                            "Error checking initial CAS for [" + sd.getName() + "]: "
-                                    + e.getMessage()));
+                    messageSet.messages.add(
+                            LogMessage.error(getClass(), "Error checking initial CAS for [%s]: %s",
+                                    sd.getName(), e.getMessage()));
                     LOG.error("Error checking initial CAS for [{}]", sd.getName(), e);
                 }
 
@@ -279,6 +277,7 @@ public class ProjectCasDoctorPanel
                 LogMessageSet messageSet = new LogMessageSet(
                         sd.getName() + " [" + CURATION_USER + "]");
                 try {
+                    objectCount++;
                     casStorageService.forceActionOnCas(sd, CURATION_USER,
                             (doc, user) -> casStorageService.readCas(doc, user,
                                     UNMANAGED_NON_INITIALIZING_ACCESS),
@@ -292,9 +291,9 @@ public class ProjectCasDoctorPanel
                             LogMessage.info(getClass(), "Curation seems to have not yet started."));
                 }
                 catch (Exception e) {
-                    messageSet.messages.add(new LogMessage(getClass(), LogLevel.ERROR,
-                            "Error checking annotations for [" + CURATION_USER + "] for ["
-                                    + sd.getName() + "]: " + e.getMessage()));
+                    messageSet.messages.add(LogMessage.error(getClass(),
+                            "Error checking annotations for [%s] for [%s]: %s", CURATION_USER,
+                            sd.getName(), e.getMessage()));
                     LOG.error("Error checking annotations for [{}] for [{}]", CURATION_USER,
                             sd.getName(), e);
                 }
@@ -305,10 +304,11 @@ public class ProjectCasDoctorPanel
 
             // Check regular annotator CASes
             for (AnnotationDocument ad : documentService.listAnnotationDocuments(sd)) {
-                if (documentService.existsAnnotationCas(ad)) {
+                if (documentService.existsCas(ad)) {
                     LogMessageSet messageSet = new LogMessageSet(
                             sd.getName() + " [" + ad.getUser() + "]");
                     try {
+                        objectCount++;
                         casStorageService.forceActionOnCas(ad.getDocument(), ad.getUser(),
                                 (doc, user) -> casStorageService.readCas(doc, user,
                                         UNMANAGED_NON_INITIALIZING_ACCESS),
@@ -316,9 +316,9 @@ public class ProjectCasDoctorPanel
                                 false);
                     }
                     catch (Exception e) {
-                        messageSet.messages.add(new LogMessage(getClass(), LogLevel.ERROR,
-                                "Error checking annotations of user [" + ad.getUser() + "] for ["
-                                        + sd.getName() + "]: " + e.getMessage()));
+                        messageSet.messages.add(LogMessage.error(getClass(),
+                                "Error checking annotations of user [%s] for [%s]: %s",
+                                ad.getUser(), sd.getName(), e.getMessage()));
                         LOG.error("Error checking annotations of user [{}] for [{}]", ad.getUser(),
                                 sd.getName(), e);
                     }
@@ -329,6 +329,15 @@ public class ProjectCasDoctorPanel
             }
         }
 
+        if (objectCount > 0) {
+            info("Applied " + casDoctor.getActiveChecks().size() + " checks to " + objectCount
+                    + " annotation objects - see report for details");
+        }
+        else {
+            warn("Project does not contain any annotation objects that can be checked");
+        }
+        aTarget.addChildren(getPage(), IFeedback.class);
+
         aTarget.add(this);
     }
 
@@ -336,46 +345,46 @@ public class ProjectCasDoctorPanel
             LogMessageSet aMessageSet)
         throws IOException, UIMAException
     {
-        CAS cas;
         if (casStorageService.existsCas(aDocument, INITIAL_CAS_PSEUDO_USER)) {
-            cas = casStorageService.readCas(aDocument, INITIAL_CAS_PSEUDO_USER,
+            return casStorageService.readCas(aDocument, INITIAL_CAS_PSEUDO_USER,
                     UNMANAGED_NON_INITIALIZING_ACCESS);
         }
-        else {
-            cas = importExportService.importCasFromFile(
-                    documentService.getSourceDocumentFile(aDocument), aDocument.getProject(),
-                    aDocument.getFormat());
-            aMessageSet.messages.add(new LogMessage(getClass(), LogLevel.INFO,
-                    "Created initial CAS for [" + aDocument.getName() + "]"));
-        }
+
+        CAS cas = importExportService
+                .importCasFromFile(documentService.getSourceDocumentFile(aDocument), aDocument);
+        aMessageSet.messages.add(
+                LogMessage.info(getClass(), "Created initial CAS for [%s]", aDocument.getName()));
         return cas;
     }
 
     private void noticeIfThereAreNoMessages(LogMessageSet aSet)
     {
         if (aSet.messages.isEmpty()) {
-            aSet.messages.add(new LogMessage(getClass(), LogLevel.INFO, "Nothing to report."));
+            aSet.messages.add(LogMessage.info(getClass(), "Nothing to report."));
         }
     }
 
-    private static class FormModel
+    private class FormModel
         implements Serializable
     {
         private static final long serialVersionUID = 5421427363671176637L;
 
         private List<LogMessageSet> messageSets = new ArrayList<>();
-        private List<Class<? extends Repair>> repairs;
+        private List<String> repairs;
 
         {
             // Fetch only the safe/non-destructive repairs
-            List<Class<? extends Repair>> allRepairs = CasDoctor.scanRepairs();
-            repairs = allRepairs.stream().filter(r -> {
-                Safe s = r.getAnnotation(Safe.class);
-                return s != null && s.value();
-            }).collect(Collectors.toList());
+            repairs = repairsRegistry.getExtensions().stream() //
+                    .filter(r -> {
+                        Safe s = r.getClass().getAnnotation(Safe.class);
+                        return s != null && s.value();
+                    }) //
+                    .map(r -> r.getId()) //
+                    .collect(toList());
         }
     }
 
+    @SuppressWarnings("unused")
     private static class LogMessageSet
         implements Serializable
     {

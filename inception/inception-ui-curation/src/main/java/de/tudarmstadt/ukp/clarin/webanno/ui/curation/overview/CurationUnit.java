@@ -20,40 +20,28 @@ package de.tudarmstadt.ukp.clarin.webanno.ui.curation.overview;
 import java.io.Serializable;
 
 /**
- * A model comprises of Curation Segments comprising of the begin and end of the sentences,
- * {@link CurationUnitState} Sentence number
+ * A model comprises of Curation Segments comprising of the begin and end of the unit,
+ * {@link CurationUnitState} unit number
  */
 public class CurationUnit
     implements Serializable
 {
     private static final long serialVersionUID = 9219600871129699568L;
 
-    // begin/end offset of sentences list, default is the begin of the document
-    private final Integer begin;
-    private final Integer end;
-    private final Integer sentenceNumber;
+    // begin/end offset of unit list, default is the begin of the document
+    private final int begin;
+    private final int end;
+    private final int unitIndex;
 
-    // begin of the curation/suggestion sentences list
-    private int curationBegin;
-    // end of the curation/suggestion sentences list
-    private int curationEnd;
+    private CurationUnitState state;
 
-    private CurationUnitState sentenceState;
-
-    private boolean isCurrentSentence;
-
-    public CurationUnit()
-    {
-        begin = null;
-        end = null;
-        sentenceNumber = null;
-    }
+    private boolean isCurrentUnit;
 
     public CurationUnit(int aBegin, int aEnd, int aUnitIndex)
     {
         begin = aBegin;
         end = aEnd;
-        sentenceNumber = aUnitIndex;
+        unitIndex = aUnitIndex;
     }
 
     public Integer getBegin()
@@ -66,48 +54,28 @@ public class CurationUnit
         return end;
     }
 
-    public int getCurationBegin()
+    public CurationUnitState getState()
     {
-        return curationBegin;
-    }
-
-    public void setCurationBegin(int curationBegin)
-    {
-        this.curationBegin = curationBegin;
-    }
-
-    public int getCurationEnd()
-    {
-        return curationEnd;
-    }
-
-    public void setCurationEnd(int curationEnd)
-    {
-        this.curationEnd = curationEnd;
-    }
-
-    public CurationUnitState getSentenceState()
-    {
-        return sentenceState;
+        return state;
     }
 
     public void setState(CurationUnitState sentenceState)
     {
-        this.sentenceState = sentenceState;
+        this.state = sentenceState;
     }
 
     public Integer getUnitIndex()
     {
-        return sentenceNumber;
+        return unitIndex;
     }
 
-    public boolean isCurrentSentence()
+    public boolean isCurrentUnit()
     {
-        return isCurrentSentence;
+        return isCurrentUnit;
     }
 
-    public void setCurrentSentence(boolean isCurrentSentence)
+    public void setCurrentUnit(boolean isCurrentSentence)
     {
-        this.isCurrentSentence = isCurrentSentence;
+        this.isCurrentUnit = isCurrentSentence;
     }
 }

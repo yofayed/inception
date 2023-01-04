@@ -21,9 +21,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import de.tudarmstadt.ukp.clarin.webanno.support.JSONUtil;
 import de.tudarmstadt.ukp.inception.active.learning.config.ActiveLearningAutoConfiguration;
 import de.tudarmstadt.ukp.inception.active.learning.event.ActiveLearningRecommendationEvent;
@@ -40,8 +37,6 @@ import de.tudarmstadt.ukp.inception.recommendation.api.model.LearningRecordType;
 public class ActiveLearningRecommendationEventAdapter
     implements EventLoggingAdapter<ActiveLearningRecommendationEvent>
 {
-    private final Logger log = LoggerFactory.getLogger(getClass());
-
     @Override
     public boolean accepts(Object aEvent)
     {
@@ -72,7 +67,7 @@ public class ActiveLearningRecommendationEventAdapter
         details.annotationFeature = aEvent.getAnnotationFeature();
         details.userAction = aEvent.getAction();
         details.currentLabel = aEvent.getCurrentRecommendation().getLabel();
-        details.confidence = aEvent.getCurrentRecommendation().getConfidence();
+        details.score = aEvent.getCurrentRecommendation().getScore();
         details.recommenderId = aEvent.getCurrentRecommendation().getRecommenderId();
 
         List<String> allLabelList = aEvent.getAllRecommendations().stream().map(ao -> ao.getLabel())
@@ -87,7 +82,7 @@ public class ActiveLearningRecommendationEventAdapter
         public String annotationFeature;
         public LearningRecordType userAction;
         public String currentLabel;
-        public double confidence;
+        public double score;
         public long recommenderId;
         public String allLabels;
     }

@@ -20,7 +20,7 @@
   <parent>
     <groupId>de.tudarmstadt.ukp.inception.app</groupId>
     <artifactId>inception-plugin-parent</artifactId>
-    <version>0.20.0-SNAPSHOT</version>
+    <version>27.0-SNAPSHOT</version>
     <relativePath>../inception-plugin-parent</relativePath>
   </parent>
   <artifactId>inception-example-imls-data-majority</artifactId>
@@ -36,10 +36,24 @@
       <artifactId>inception-recommendation-api</artifactId>
       <scope>provided</scope>
     </dependency>
-
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-api-render</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-api-annotation</artifactId>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-model</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-support</artifactId>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -49,7 +63,7 @@
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-api-dao</artifactId>
+      <artifactId>inception-annotation-storage</artifactId>
       <scope>provided</scope>
     </dependency>
 
@@ -94,17 +108,7 @@
       <scope>provided</scope>
     </dependency>
 
-    <!-- Testing -->
-    <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.assertj</groupId>
-      <artifactId>assertj-core</artifactId>
-      <scope>test</scope>
-    </dependency>
+    <!-- DEPENDENCIES FOR TESTING -->
     <dependency>
       <groupId>org.dkpro.core</groupId>
       <artifactId>dkpro-core-api-datasets-asl</artifactId>
@@ -113,11 +117,6 @@
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-testing</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.dkpro.core</groupId>
-      <artifactId>dkpro-core-testing-asl</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

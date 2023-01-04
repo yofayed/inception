@@ -18,6 +18,7 @@
 package de.tudarmstadt.ukp.inception.kb.graph;
 
 import java.io.Serializable;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -32,6 +33,7 @@ import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Literal;
 import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.Value;
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
 
 public class KBStatement
     implements Serializable
@@ -73,6 +75,8 @@ public class KBStatement
     }
 
     /**
+     * @param aId
+     *            statement IRI
      * @param aInstance
      *            {@link KBHandle} for the statement instance
      * @param aProperty
@@ -174,6 +178,10 @@ public class KBStatement
         }
         else {
             value = aValue;
+        }
+
+        if (value instanceof URI) {
+            value = SimpleValueFactory.getInstance().createIRI(((URI) value).toString());
         }
     }
 

@@ -20,7 +20,7 @@
   <parent>
     <groupId>de.tudarmstadt.ukp.inception.app</groupId>
     <artifactId>inception-app</artifactId>
-    <version>0.20.0-SNAPSHOT</version>
+    <version>27.0-SNAPSHOT</version>
   </parent>
   <artifactId>inception-image</artifactId>
   <name>INCEpTION - Image Support</name>
@@ -28,6 +28,14 @@
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-api-annotation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-api-render</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-api-schema</artifactId>
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
@@ -97,29 +105,25 @@
       <artifactId>wicket-kendo-ui</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.danekja</groupId>
-      <artifactId>jdk-serializable-functional</artifactId>
-    </dependency>
-    <dependency>
       <groupId>de.agilecoders.wicket.webjars</groupId>
       <artifactId>wicket-webjars</artifactId>
     </dependency>
     <dependency>
+      <groupId>de.agilecoders.wicket</groupId>
+      <artifactId>wicket-bootstrap-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.agilecoders.wicket</groupId>
+      <artifactId>wicket-bootstrap-extensions</artifactId>
+    </dependency>
+
+    <dependency>
       <groupId>org.webjars.npm</groupId>
       <artifactId>color-thief</artifactId>
-      <version>2.2.1</version>
-      <exclusions>
-        <!-- The versions of canvas referenced by color-thief are not available on Maven Central -->
-        <exclusion>
-          <groupId>org.webjars.npm</groupId>
-          <artifactId>canvas</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.webjars.npm</groupId>
       <artifactId>canvas</artifactId>
-      <version>1.4.0</version>
     </dependency>
   </dependencies>
   <build>

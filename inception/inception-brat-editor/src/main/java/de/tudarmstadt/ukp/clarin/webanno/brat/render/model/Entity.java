@@ -26,8 +26,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.VID;
-import de.tudarmstadt.ukp.clarin.webanno.brat.message.BeanAsArraySerializer;
+import de.tudarmstadt.ukp.inception.rendering.vmodel.VID;
+import de.tudarmstadt.ukp.inception.support.json.BeanAsArraySerializer;
 
 /**
  * An Entity is a span annotation with id, type and offsets of the span annotation of the format
@@ -53,26 +53,45 @@ public class Entity
 
     public Entity(int aId, String aType, Offsets aOffsets, String aLabelText, String aColor)
     {
-        this(aId, aType, asList(aOffsets), aLabelText, aColor);
+        this(aId, aType, asList(aOffsets), aLabelText, aColor, false);
     }
 
     public Entity(int aId, String aType, List<Offsets> aOffsets, String aLabelText, String aColor)
     {
-        this(new VID(aId), aType, aOffsets, aLabelText, aColor);
+        this(new VID(aId), aType, aOffsets, aLabelText, aColor, false);
+    }
+
+    public Entity(int aId, String aType, List<Offsets> aOffsets, String aLabelText, String aColor,
+            boolean aActionButtons)
+    {
+        this(new VID(aId), aType, aOffsets, aLabelText, aColor, aActionButtons);
+    }
+
+    public Entity(VID aVid, String aType, Offsets aOffsets, String aLabelText, String aColor,
+            boolean aActionButtons)
+    {
+        this(aVid, aType, asList(aOffsets), aLabelText, aColor, aActionButtons);
     }
 
     public Entity(VID aVid, String aType, Offsets aOffsets, String aLabelText, String aColor)
     {
-        this(aVid, aType, asList(aOffsets), aLabelText, aColor);
+        this(aVid, aType, asList(aOffsets), aLabelText, aColor, false);
     }
 
     public Entity(VID aVid, String aType, List<Offsets> aOffsets, String aLabelText, String aColor)
+    {
+        this(aVid, aType, aOffsets, aLabelText, aColor, false);
+    }
+
+    public Entity(VID aVid, String aType, List<Offsets> aOffsets, String aLabelText, String aColor,
+            boolean aActionButtons)
     {
         vid = aVid;
         type = aType;
         offsets = aOffsets;
         attributes.setLabelText(aLabelText);
         attributes.setColor(aColor);
+        attributes.setActionButtons(aActionButtons);
     }
 
     @Deprecated
@@ -130,6 +149,7 @@ public class Entity
     /**
      * @deprecated Use {@code getAttributes().setLabelText(...)}.
      */
+    @SuppressWarnings("javadoc")
     @JsonIgnore
     @Deprecated
     public void setLabelText(String aLabelText)
@@ -140,6 +160,7 @@ public class Entity
     /**
      * @deprecated Use {@code getAttributes().getLabelText()}.
      */
+    @SuppressWarnings("javadoc")
     @Deprecated
     public String getLabelText()
     {
@@ -149,6 +170,7 @@ public class Entity
     /**
      * @deprecated Use {@code getAttributes().getColor()}.
      */
+    @SuppressWarnings("javadoc")
     @Deprecated
     public String getColor()
     {
@@ -158,6 +180,7 @@ public class Entity
     /**
      * @deprecated Use {@code getAttributes().setColor(...)}.
      */
+    @SuppressWarnings("javadoc")
     @JsonIgnore
     @Deprecated
     public void setColor(String aColor)

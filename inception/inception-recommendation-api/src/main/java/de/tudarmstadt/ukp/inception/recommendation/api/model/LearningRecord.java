@@ -19,6 +19,7 @@ package de.tudarmstadt.ukp.inception.recommendation.api.model;
 
 import java.io.Serializable;
 import java.util.Date;
+import java.util.Objects;
 
 import javax.annotation.Nullable;
 import javax.persistence.Column;
@@ -67,10 +68,17 @@ public class LearningRecord
     @JoinColumn(name = "annotationFeature")
     private AnnotationFeature annotationFeature;
 
-    private int offsetTokenBegin;
-    private int offsetTokenEnd;
-    private int offsetCharacterBegin;
-    private int offsetCharacterEnd;
+    // Character offsets describing the text this record refers to.
+    // -1 mean the offset is not used for this particular record.
+    // Offsets are used the following:
+    // - For span suggestions, we use (offsetBegin, offsetEnd)
+    // - For relation suggestions, we use
+    // {Gov, (offsetBegin, offsetEnd)} -> {Dep, (offsetBegin2, offsetEnd2)}
+
+    private int offsetBegin;
+    private int offsetEnd;
+    private int offsetBegin2 = -1;
+    private int offsetEnd2 = -1;
 
     private String tokenText;
     private String annotation;
@@ -83,14 +91,45 @@ public class LearningRecord
     @Type(type = "de.tudarmstadt.ukp.inception.recommendation.api.model.LearningRecordChangeLocationType")
     private LearningRecordChangeLocation changeLocation;
 
+    @Type(type = "de.tudarmstadt.ukp.inception.recommendation.api.model.SuggestionTypeWrapper")
+    private SuggestionType suggestionType;
+
+    @Temporal(TemporalType.TIMESTAMP)
+    @Column(nullable = false)
+    private Date actionDate = new Date();
+
+    private LearningRecord(Builder builder)
+    {
+        this.id = builder.id;
+        this.sourceDocument = builder.sourceDocument;
+        this.layer = builder.layer;
+        this.annotationFeature = builder.annotationFeature;
+        this.offsetBegin = builder.offsetBegin;
+        this.offsetEnd = builder.offsetEnd;
+        this.offsetBegin2 = builder.offsetBegin2;
+        this.offsetEnd2 = builder.offsetEnd2;
+        this.tokenText = builder.tokenText;
+        this.annotation = builder.annotation;
+        this.userAction = builder.userAction;
+        this.user = builder.user;
+        this.changeLocation = builder.changeLocation;
+        this.suggestionType = builder.suggestionType;
+        this.actionDate = builder.actionDate;
+    }
+
+    public LearningRecord()
+    {
+        // Required for serialization/JPA
+    }
+
     public Long getId()
     {
         return id;
     }
 
-    public void setId(Long id)
+    public void setId(Long aId)
     {
-        this.id = id;
+        id = aId;
     }
 
     public SourceDocument getSourceDocument()
@@ -98,9 +137,9 @@ public class LearningRecord
         return sourceDocument;
     }
 
-    public void setSourceDocument(SourceDocument sourceDocument)
+    public void setSourceDocument(SourceDocument aSourceDocument)
     {
-        this.sourceDocument = sourceDocument;
+        sourceDocument = aSourceDocument;
     }
 
     public String getUser()
@@ -108,58 +147,104 @@ public class LearningRecord
         return user;
     }
 
-    public void setUser(String user)
+    public void setUser(String aUser)
     {
-        this.user = user;
+        user = aUser;
     }
 
-    @Deprecated
-    public int getOffsetTokenBegin()
+    public int getOffsetBegin()
     {
-        return offsetTokenBegin;
+        return offsetBegin;
     }
 
-    @Deprecated
-    public void setOffsetTokenBegin(int offsetTokenBegin)
+    public void setOffsetBegin(int aOffsetCharacterBegin)
     {
-        this.offsetTokenBegin = offsetTokenBegin;
+        offsetBegin = aOffsetCharacterBegin;
     }
 
-    @Deprecated
-    public int getOffsetTokenEnd()
+    public int getOffsetEnd()
     {
-        return offsetTokenEnd;
+        return offsetEnd;
     }
 
-    @Deprecated
-    public void setOffsetTokenEnd(int offsetTokenEnd)
+    public void setOffsetEnd(int aOffsetCharacterEnd)
     {
-        this.offsetTokenEnd = offsetTokenEnd;
+        offsetEnd = aOffsetCharacterEnd;
     }
 
-    public int getOffsetCharacterBegin()
+    public int getOffsetBegin2()
     {
-        return offsetCharacterBegin;
+        return offsetBegin2;
     }
 
-    public void setOffsetCharacterBegin(int offsetCharacterBegin)
+    public void setOffsetBegin2(int aOffset2Begin)
     {
-        this.offsetCharacterBegin = offsetCharacterBegin;
+        offsetBegin2 = aOffset2Begin;
     }
 
-    public int getOffsetCharacterEnd()
+    public int getOffsetEnd2()
     {
-        return offsetCharacterEnd;
+        return offsetEnd2;
     }
 
-    public void setOffsetCharacterEnd(int offsetCharacterEnd)
+    public void setOffsetEnd2(int aOffset2End)
     {
-        this.offsetCharacterEnd = offsetCharacterEnd;
+        offsetEnd2 = aOffset2End;
+    }
+
+    public int getOffsetSourceBegin()
+    {
+        return offsetBegin;
+    }
+
+    public void setOffsetSourceBegin(int aSourceBeginOffset)
+    {
+        offsetBegin = aSourceBeginOffset;
+    }
+
+    public int getOffsetSourceEnd()
+    {
+        return offsetEnd;
+    }
+
+    public void setOffsetSourceEnd(int aSourceEndOffset)
+    {
+        offsetEnd = aSourceEndOffset;
+    }
+
+    public int getOffsetTargetBegin()
+    {
+        return offsetBegin2;
+    }
+
+    public void setOffsetTargetBegin(int aTargetBeginOffset)
+    {
+        offsetBegin2 = aTargetBeginOffset;
+    }
+
+    public int getOffsetTargetEnd()
+    {
+        return offsetEnd2;
+    }
+
+    public void setOffsetTargetEnd(int aTargetEndOffset)
+    {
+        offsetEnd2 = aTargetEndOffset;
     }
 
     public String getTokenText()
     {
         return tokenText;
+    }
+
+    public SuggestionType getSuggestionType()
+    {
+        return suggestionType;
+    }
+
+    public void setSuggestionType(SuggestionType aSuggestionType)
+    {
+        suggestionType = aSuggestionType;
     }
 
     public void setTokenText(String tokenText)
@@ -170,8 +255,8 @@ public class LearningRecord
     }
 
     /**
-     * Get annotation label, might be null if the recorded annotation was an annotation without
-     * label.
+     * @return annotation label, might be null if the recorded annotation was an annotation without
+     *         label.
      */
     @Nullable
     public String getAnnotation()
@@ -179,9 +264,9 @@ public class LearningRecord
         return annotation;
     }
 
-    public void setAnnotation(String annotation)
+    public void setAnnotation(String aAnnotation)
     {
-        this.annotation = annotation;
+        annotation = aAnnotation;
     }
 
     public LearningRecordType getUserAction()
@@ -189,9 +274,9 @@ public class LearningRecord
         return userAction;
     }
 
-    public void setUserAction(LearningRecordType userAction)
+    public void setUserAction(LearningRecordType aUserAction)
     {
-        this.userAction = userAction;
+        userAction = aUserAction;
     }
 
     public Date getActionDate()
@@ -199,9 +284,9 @@ public class LearningRecord
         return actionDate;
     }
 
-    public void setActionDate(Date actionDate)
+    public void setActionDate(Date aActionDate)
     {
-        this.actionDate = actionDate;
+        actionDate = aActionDate;
     }
 
     public AnnotationLayer getLayer()
@@ -209,9 +294,9 @@ public class LearningRecord
         return layer;
     }
 
-    public void setLayer(AnnotationLayer layer)
+    public void setLayer(AnnotationLayer aLayer)
     {
-        this.layer = layer;
+        layer = aLayer;
     }
 
     public LearningRecordChangeLocation getChangeLocation()
@@ -219,9 +304,9 @@ public class LearningRecord
         return changeLocation;
     }
 
-    public void setChangeLocation(LearningRecordChangeLocation changeLocation)
+    public void setChangeLocation(LearningRecordChangeLocation aChangeLocation)
     {
-        this.changeLocation = changeLocation;
+        changeLocation = aChangeLocation;
     }
 
     public AnnotationFeature getAnnotationFeature()
@@ -233,10 +318,6 @@ public class LearningRecord
     {
         annotationFeature = anAnnotationFeature;
     }
-
-    @Temporal(TemporalType.TIMESTAMP)
-    @Column(nullable = false)
-    private Date actionDate = new Date();
 
     @Override
     public boolean equals(Object o)
@@ -250,27 +331,39 @@ public class LearningRecord
 
         LearningRecord that = (LearningRecord) o;
 
-        if (offsetCharacterBegin != that.offsetCharacterBegin) {
+        if (!Objects.equals(suggestionType, that.suggestionType)) {
             return false;
         }
-        if (offsetCharacterEnd != that.offsetCharacterEnd) {
+
+        if (offsetBegin != that.offsetBegin) {
             return false;
         }
-        if (sourceDocument != null ? !sourceDocument.equals(that.sourceDocument)
-                : that.sourceDocument != null) {
+        if (offsetEnd != that.offsetEnd) {
             return false;
         }
-        if (layer != null ? !layer.equals(that.layer) : that.layer != null) {
+
+        if (SuggestionType.RELATION.equals(suggestionType)) {
+            if (offsetBegin2 != that.offsetBegin2) {
+                return false;
+            }
+            if (offsetEnd2 != that.offsetEnd2) {
+                return false;
+            }
+        }
+
+        if (!Objects.equals(sourceDocument, that.sourceDocument)) {
             return false;
         }
-        if (annotation != null ? !annotation.equals(that.annotation) : that.annotation != null) {
+        if (!Objects.equals(layer, that.layer)) {
             return false;
         }
-        if (annotationFeature != null ? !annotationFeature.equals(that.annotationFeature)
-                : that.annotationFeature != null) {
+        if (!Objects.equals(annotation, that.annotation)) {
             return false;
         }
-        return user != null ? user.equals(that.user) : that.user == null;
+        if (!Objects.equals(annotationFeature, that.annotationFeature)) {
+            return false;
+        }
+        return Objects.equals(user, that.user);
     }
 
     @Override
@@ -279,10 +372,137 @@ public class LearningRecord
         int result = sourceDocument != null ? sourceDocument.hashCode() : 0;
         result = 31 * result + (layer != null ? layer.hashCode() : 0);
         result = 31 * result + (annotationFeature != null ? annotationFeature.hashCode() : 0);
-        result = 31 * result + offsetCharacterBegin;
-        result = 31 * result + offsetCharacterEnd;
+        result = 31 * result + (suggestionType != null ? suggestionType.getId().hashCode() : 0);
+        result = 31 * result + offsetBegin;
+        result = 31 * result + offsetEnd;
+        result = 31 * result + offsetBegin2;
+        result = 31 * result + offsetEnd2;
         result = 31 * result + (annotation != null ? annotation.hashCode() : 0);
         result = 31 * result + (user != null ? user.hashCode() : 0);
         return result;
+    }
+
+    public static Builder builder()
+    {
+        return new Builder();
+    }
+
+    public static final class Builder
+    {
+        private Long id;
+        private SourceDocument sourceDocument;
+        private AnnotationLayer layer;
+        private AnnotationFeature annotationFeature;
+        private int offsetBegin;
+        private int offsetEnd;
+        private int offsetBegin2 = -1;
+        private int offsetEnd2 = -1;
+        private String tokenText;
+        private String annotation;
+        private LearningRecordType userAction;
+        private String user;
+        private LearningRecordChangeLocation changeLocation;
+        private SuggestionType suggestionType;
+        private Date actionDate = new Date();
+
+        private Builder()
+        {
+            // No instances
+        }
+
+        public Builder withId(Long aId)
+        {
+            id = aId;
+            return this;
+        }
+
+        public Builder withSourceDocument(SourceDocument aSourceDocument)
+        {
+            sourceDocument = aSourceDocument;
+            return this;
+        }
+
+        public Builder withLayer(AnnotationLayer aLayer)
+        {
+            layer = aLayer;
+            return this;
+        }
+
+        public Builder withAnnotationFeature(AnnotationFeature aAnnotationFeature)
+        {
+            annotationFeature = aAnnotationFeature;
+            return this;
+        }
+
+        public Builder withOffsetBegin(int aOffsetBegin)
+        {
+            offsetBegin = aOffsetBegin;
+            return this;
+        }
+
+        public Builder withOffsetEnd(int aOffsetEnd)
+        {
+            offsetEnd = aOffsetEnd;
+            return this;
+        }
+
+        public Builder withOffsetBegin2(int aOffsetBegin2)
+        {
+            offsetBegin2 = aOffsetBegin2;
+            return this;
+        }
+
+        public Builder withOffsetEnd2(int aOffsetEnd2)
+        {
+            offsetEnd2 = aOffsetEnd2;
+            return this;
+        }
+
+        public Builder withTokenText(String aTokenText)
+        {
+            tokenText = aTokenText;
+            return this;
+        }
+
+        public Builder withAnnotation(String aAnnotation)
+        {
+            annotation = aAnnotation;
+            return this;
+        }
+
+        public Builder withUserAction(LearningRecordType aUserAction)
+        {
+            userAction = aUserAction;
+            return this;
+        }
+
+        public Builder withUser(String aUser)
+        {
+            user = aUser;
+            return this;
+        }
+
+        public Builder withChangeLocation(LearningRecordChangeLocation aChangeLocation)
+        {
+            changeLocation = aChangeLocation;
+            return this;
+        }
+
+        public Builder withSuggestionType(SuggestionType aSuggestionType)
+        {
+            suggestionType = aSuggestionType;
+            return this;
+        }
+
+        public Builder withActionDate(Date aActionDate)
+        {
+            actionDate = aActionDate;
+            return this;
+        }
+
+        public LearningRecord build()
+        {
+            return new LearningRecord(this);
+        }
     }
 }

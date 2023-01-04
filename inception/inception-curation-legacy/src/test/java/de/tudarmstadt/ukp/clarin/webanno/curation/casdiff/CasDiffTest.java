@@ -17,21 +17,24 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.curation.casdiff;
 
-import static de.tudarmstadt.ukp.clarin.webanno.curation.CurationTestUtils.HOST_TYPE;
-import static de.tudarmstadt.ukp.clarin.webanno.curation.CurationTestUtils.createMultiLinkWithRoleTestTypeSystem;
-import static de.tudarmstadt.ukp.clarin.webanno.curation.CurationTestUtils.load;
-import static de.tudarmstadt.ukp.clarin.webanno.curation.CurationTestUtils.loadWebAnnoTsv3;
-import static de.tudarmstadt.ukp.clarin.webanno.curation.CurationTestUtils.makeLinkFS;
-import static de.tudarmstadt.ukp.clarin.webanno.curation.CurationTestUtils.makeLinkHostFS;
 import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.CasDiff.doDiff;
+import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.CurationTestUtils.HOST_TYPE;
+import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.CurationTestUtils.createMultiLinkWithRoleTestTypeSystem;
+import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.CurationTestUtils.load;
+import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.CurationTestUtils.loadWebAnnoTsv3;
+import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.CurationTestUtils.makeLinkFS;
+import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.CurationTestUtils.makeLinkHostFS;
 import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.LinkCompareBehavior.LINK_ROLE_AS_LABEL;
 import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.LinkCompareBehavior.LINK_TARGET_AS_LABEL;
 import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.relation.RelationDiffAdapter.DEPENDENCY_DIFF_ADAPTER;
 import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.span.SpanDiffAdapter.POS_DIFF_ADAPTER;
+import static de.tudarmstadt.ukp.clarin.webanno.support.uima.AnnotationBuilder.buildAnnotation;
 import static java.util.Arrays.asList;
+import static org.apache.uima.fit.factory.CasFactory.createText;
 import static org.apache.uima.fit.factory.JCasFactory.createJCas;
 import static org.apache.uima.fit.util.JCasUtil.select;
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -49,15 +52,13 @@ import org.apache.uima.fit.util.FSUtil;
 import org.apache.uima.jcas.JCas;
 import org.apache.uima.resource.metadata.TypeSystemDescription;
 import org.apache.uima.util.CasCreationUtils;
-import org.dkpro.core.testing.DkproTestContext;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst;
 import de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.CasDiff.DiffResult;
 import de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.api.DiffAdapter;
 import de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.relation.RelationDiffAdapter;
 import de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.span.SpanDiffAdapter;
+import de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst;
 import de.tudarmstadt.ukp.dkpro.core.api.lexmorph.type.pos.POS;
 import de.tudarmstadt.ukp.dkpro.core.api.ner.type.NamedEntity;
 import de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Lemma;
@@ -110,24 +111,13 @@ public class CasDiffTest
         String text = "";
 
         CAS user1Cas1 = null;
-
         CAS user1Cas2 = null;
-
-        CAS user1Cas3 = JCasFactory.createJCas().getCas();
-        user1Cas3.setDocumentText(text);
-
-        CAS user1Cas4 = JCasFactory.createJCas().getCas();
-        user1Cas4.setDocumentText(text);
-
-        CAS user2Cas1 = JCasFactory.createJCas().getCas();
-        user2Cas1.setDocumentText(text);
-
+        CAS user1Cas3 = createText(text);
+        CAS user1Cas4 = createText(text);
+        CAS user2Cas1 = createText(text);
         CAS user2Cas2 = null;
-
         CAS user2Cas3 = null;
-
-        CAS user2Cas4 = JCasFactory.createJCas().getCas();
-        user2Cas4.setDocumentText(text);
+        CAS user2Cas4 = createText(text);
 
         Map<String, List<CAS>> casByUser = new LinkedHashMap<>();
         casByUser.put("user1", asList(user1Cas1, user1Cas2, user1Cas3, user1Cas4));
@@ -354,11 +344,9 @@ public class CasDiffTest
     {
         Map<String, List<CAS>> casByUser = new HashMap<>();
         casByUser.put("user1",
-                asList(loadWebAnnoTsv3("testsuite/" + testContext.getMethodName() + "/user1.tsv")
-                        .getCas()));
+                asList(loadWebAnnoTsv3("casdiff/relationLabelTest/user1.tsv").getCas()));
         casByUser.put("user2",
-                asList(loadWebAnnoTsv3("testsuite/" + testContext.getMethodName() + "/user2.tsv")
-                        .getCas()));
+                asList(loadWebAnnoTsv3("casdiff/relationLabelTest/user2.tsv").getCas()));
 
         List<? extends DiffAdapter> diffAdapters = asList(new RelationDiffAdapter(
                 Dependency.class.getName(), "Dependent", "Governor", "DependencyType"));
@@ -469,6 +457,64 @@ public class CasDiffTest
     }
 
     @Test
+    public void multiValueStringFeatureDifferenceTest() throws Exception
+    {
+        var cas1 = createText("");
+        buildAnnotation(cas1, "webanno.custom.SpanMultiValue") //
+                .withFeature("values", asList("a", "b")) //
+                .buildAndAddToIndexes();
+
+        var cas2 = createText("");
+        buildAnnotation(cas2, "webanno.custom.SpanMultiValue") //
+                .withFeature("values", asList("a")) //
+                .buildAndAddToIndexes();
+
+        var casByUser = Map.of( //
+                "user1", asList(cas1), //
+                "user2", asList(cas2));
+
+        SpanDiffAdapter adapter = new SpanDiffAdapter("webanno.custom.SpanMultiValue", "values");
+
+        CasDiff diff = doDiff(asList(adapter), LINK_TARGET_AS_LABEL, casByUser);
+        DiffResult result = diff.toResult();
+
+        result.print(System.out);
+
+        assertThat(result.size()).isEqualTo(1);
+        assertThat(result.getDifferingConfigurationSets()).hasSize(1);
+        assertThat(result.getIncompleteConfigurationSets()).isEmpty();
+    }
+
+    @Test
+    public void multiValueStringFeatureNoDifferenceTest() throws Exception
+    {
+        var cas1 = createText("");
+        buildAnnotation(cas1, "webanno.custom.SpanMultiValue") //
+                .withFeature("values", asList("a", "b")) //
+                .buildAndAddToIndexes();
+
+        var cas2 = createText("");
+        buildAnnotation(cas2, "webanno.custom.SpanMultiValue") //
+                .withFeature("values", asList("b", "a")) //
+                .buildAndAddToIndexes();
+
+        var casByUser = Map.of( //
+                "user1", asList(cas1), //
+                "user2", asList(cas2));
+
+        SpanDiffAdapter adapter = new SpanDiffAdapter("webanno.custom.SpanMultiValue", "values");
+
+        CasDiff diff = doDiff(asList(adapter), LINK_TARGET_AS_LABEL, casByUser);
+        DiffResult result = diff.toResult();
+
+        result.print(System.out);
+
+        assertThat(result.size()).isEqualTo(1);
+        assertThat(result.getDifferingConfigurationSets()).isEmpty();
+        assertThat(result.getIncompleteConfigurationSets()).isEmpty();
+    }
+
+    @Test
     public void multiLinkWithRoleNoDifferenceTest() throws Exception
     {
         JCas jcasA = createJCas(createMultiLinkWithRoleTestTypeSystem());
@@ -485,9 +531,7 @@ public class CasDiffTest
 
         SpanDiffAdapter adapter = new SpanDiffAdapter(HOST_TYPE);
         adapter.addLinkFeature("links", "role", "target");
-        List<? extends DiffAdapter> diffAdapters = asList(adapter);
-
-        CasDiff diff = doDiff(diffAdapters, LINK_TARGET_AS_LABEL, casByUser);
+        CasDiff diff = doDiff(asList(adapter), LINK_TARGET_AS_LABEL, casByUser);
         DiffResult result = diff.toResult();
 
         // result.print(System.out);
@@ -656,7 +700,4 @@ public class CasDiffTest
         //
         // assertEquals(0.0, agreement.getAgreement(), 0.00001d);
     }
-
-    @Rule
-    public DkproTestContext testContext = new DkproTestContext();
 }

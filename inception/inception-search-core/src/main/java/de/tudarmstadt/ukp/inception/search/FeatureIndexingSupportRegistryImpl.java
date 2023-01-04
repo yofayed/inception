@@ -21,8 +21,9 @@
  */
 package de.tudarmstadt.ukp.inception.search;
 
+import static java.util.Collections.unmodifiableList;
+
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
+import de.tudarmstadt.ukp.clarin.webanno.support.logging.BaseLoggers;
 import de.tudarmstadt.ukp.inception.search.config.SearchServiceAutoConfiguration;
 
 /**
@@ -78,12 +80,14 @@ public class FeatureIndexingSupportRegistryImpl
             AnnotationAwareOrderComparator.sort(fsp);
 
             for (FeatureIndexingSupport fs : fsp) {
-                log.info("Found indexing support: {}",
+                log.debug("Found feature indexing support: {}",
                         ClassUtils.getAbbreviatedName(fs.getClass(), 20));
             }
         }
 
-        indexingSupports = Collections.unmodifiableList(fsp);
+        BaseLoggers.BOOT_LOG.info("Found [{}] feature indexing supports", fsp.size());
+
+        indexingSupports = unmodifiableList(fsp);
     }
 
     @Override

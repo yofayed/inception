@@ -17,19 +17,19 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.telemetry;
 
-import static de.tudarmstadt.ukp.clarin.webanno.telemetry.DeploymentMode.DESKTOP;
-import static de.tudarmstadt.ukp.clarin.webanno.telemetry.DeploymentMode.SERVER_JAR;
-import static de.tudarmstadt.ukp.clarin.webanno.telemetry.DeploymentMode.SERVER_JAR_DOCKER;
-import static de.tudarmstadt.ukp.clarin.webanno.telemetry.DeploymentMode.SERVER_WAR;
-import static de.tudarmstadt.ukp.clarin.webanno.telemetry.DeploymentMode.SERVER_WAR_DOCKER;
+import static de.tudarmstadt.ukp.inception.support.deployment.DeploymentMode.DESKTOP;
+import static de.tudarmstadt.ukp.inception.support.deployment.DeploymentMode.SERVER_JAR;
+import static de.tudarmstadt.ukp.inception.support.deployment.DeploymentMode.SERVER_JAR_DOCKER;
+import static de.tudarmstadt.ukp.inception.support.deployment.DeploymentMode.SERVER_WAR;
+import static de.tudarmstadt.ukp.inception.support.deployment.DeploymentMode.SERVER_WAR_DOCKER;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Collections.unmodifiableList;
 import static java.util.Objects.isNull;
 import static org.apache.commons.io.FileUtils.readFileToString;
 
 import java.awt.GraphicsEnvironment;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,25 +46,36 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
-import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import de.tudarmstadt.ukp.clarin.webanno.telemetry.config.TelemetryServiceAutoConfiguration;
+import de.tudarmstadt.ukp.clarin.webanno.telemetry.config.TelemetryServiceProperties;
 import de.tudarmstadt.ukp.clarin.webanno.telemetry.event.TelemetrySettingsSavedEvent;
 import de.tudarmstadt.ukp.clarin.webanno.telemetry.model.TelemetrySettings;
+import de.tudarmstadt.ukp.inception.support.deployment.DeploymentMode;
+import de.tudarmstadt.ukp.inception.support.deployment.DeploymentModeServiceImpl;
 
-@Component
+/**
+ * <p>
+ * This class is exposed as a Spring Component via
+ * {@link TelemetryServiceAutoConfiguration#telemetryService}.
+ * </p>
+ */
 public class TelemetryServiceImpl
     implements TelemetryService
 {
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    @PersistenceContext
-    private EntityManager entityManager;
+    private @PersistenceContext EntityManager entityManager;
 
-    private final List<TelemetrySupport> telemetrySupportsProxy;
+    private final TelemetryServiceProperties properties;
+    private final List<TelemetrySupport<?>> telemetrySupportsProxy;
     private final ApplicationEventPublisher eventPublisher;
+    private final TransactionTemplate transactionTemplate;
 
-    private List<TelemetrySupport> telemetrySupports;
+    private List<TelemetrySupport<?>> telemetrySupports;
 
     @Value("${running.from.commandline}")
     private boolean runningFromCommandline;
@@ -72,11 +83,14 @@ public class TelemetryServiceImpl
     private int port = -1;
 
     public TelemetryServiceImpl(
-            @Lazy @Autowired(required = false) List<TelemetrySupport> aTelemetrySupports,
-            ApplicationEventPublisher aEventPublisher)
+            @Lazy @Autowired(required = false) List<TelemetrySupport<?>> aTelemetrySupports,
+            ApplicationEventPublisher aEventPublisher, TelemetryServiceProperties aProperties,
+            PlatformTransactionManager aTransactionManager)
     {
         telemetrySupportsProxy = aTelemetrySupports;
         eventPublisher = aEventPublisher;
+        properties = aProperties;
+        transactionTemplate = new TransactionTemplate(aTransactionManager);
     }
 
     @EventListener
@@ -85,6 +99,11 @@ public class TelemetryServiceImpl
         init();
     }
 
+    /**
+     * @deprecated Moved to {@link DeploymentModeServiceImpl}
+     */
+    @SuppressWarnings("javadoc")
+    @Deprecated
     @EventListener
     public void onApplicationEvent(WebServerInitializedEvent aEvt)
     {
@@ -93,28 +112,70 @@ public class TelemetryServiceImpl
 
     public void init()
     {
-        List<TelemetrySupport> tsp = new ArrayList<>();
+        List<TelemetrySupport<?>> tsp = new ArrayList<>();
 
         if (telemetrySupportsProxy != null) {
             tsp.addAll(telemetrySupportsProxy);
             AnnotationAwareOrderComparator.sort(tsp);
 
-            for (TelemetrySupport ts : tsp) {
-                log.info("Found telemetry support: {}", ts.getId());
+            for (TelemetrySupport<?> ts : tsp) {
+                log.debug("Found telemetry support: {}", ts.getId());
             }
         }
 
-        telemetrySupports = Collections.unmodifiableList(tsp);
+        log.info("Found [{}] telemetry supports", tsp.size());
+
+        telemetrySupports = unmodifiableList(tsp);
+
+        autoAcceptOrReject();
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private void autoAcceptOrReject()
+    {
+        if (properties.getAutoRespond() == null) {
+            return;
+        }
+
+        transactionTemplate.executeWithoutResult(transactionStatus -> {
+            List<TelemetrySettings> settingsToSave = new ArrayList<>();
+
+            for (TelemetrySupport support : getTelemetrySupports()) {
+                if (!support.hasValidSettings()) {
+                    TelemetrySettings settings = readOrCreateSettings(support);
+                    Object traits = support.readTraits(settings);
+                    switch (properties.getAutoRespond()) {
+                    case ACCEPT:
+                        support.acceptAll(traits);
+                        break;
+                    case REJECT:
+                        support.rejectAll(traits);
+                        break;
+                    }
+                    support.writeTraits(settings, traits);
+                    settingsToSave.add(settings);
+                }
+            }
+
+            writeAllSettings(settingsToSave);
+        });
     }
 
     /**
-     * The embedded server was used (i.e. not running as a WAR).
+     * @return if the embedded server was used (i.e. not running as a WAR).
+     * @deprecated Use {@link DeploymentModeServiceImpl#isEmbeddedServerDeployment()}
      */
+    @Deprecated
     public boolean isEmbeddedServerDeployment()
     {
         return port != -1 && runningFromCommandline;
     }
 
+    /**
+     * @deprecated Use {@link DeploymentModeServiceImpl#isDesktopInstance()}
+     */
+    @Deprecated
+    @SuppressWarnings("javadoc")
     public boolean isDesktopInstance()
     {
         return // The embedded server was used (i.e. not running as a WAR)
@@ -126,8 +187,10 @@ public class TelemetryServiceImpl
     }
 
     /**
-     * The embedded server was used (i.e. not running as a WAR) and running in Docker.
+     * @return if the embedded server was used (i.e. not running as a WAR) and running in Docker.
+     * @deprecated Use {@link DeploymentModeServiceImpl#isDockerized()}
      */
+    @Deprecated
     public boolean isDockerized()
     {
         final String cgroupPath = "/proc/1/cgroup";
@@ -148,6 +211,10 @@ public class TelemetryServiceImpl
         return false;
     }
 
+    /**
+     * @deprecated Use {@link DeploymentModeServiceImpl#getDeploymentMode()}
+     */
+    @Deprecated
     @Override
     public DeploymentMode getDeploymentMode()
     {
@@ -174,15 +241,19 @@ public class TelemetryServiceImpl
     }
 
     @Override
-    public List<TelemetrySupport> getTelemetrySupports()
+    public List<TelemetrySupport<?>> getTelemetrySupports()
     {
         return telemetrySupports;
     }
 
+    @SuppressWarnings("unchecked")
     @Override
-    public Optional<TelemetrySupport> getTelemetrySuppport(String aSupport)
+    public <T> Optional<TelemetrySupport<T>> getTelemetrySuppport(String aSupport)
     {
-        return telemetrySupports.stream().filter(ts -> ts.getId().equals(aSupport)).findFirst();
+        return telemetrySupports.stream() //
+                .filter(ts -> ts.getId().equals(aSupport)) //
+                .map(ts -> (TelemetrySupport<T>) ts) //
+                .findFirst();
     }
 
     @Override
@@ -227,7 +298,6 @@ public class TelemetryServiceImpl
         }
     }
 
-    @Transactional
     private void writeSettings(TelemetrySettings aSettings)
     {
         if (isNull(aSettings.getId())) {

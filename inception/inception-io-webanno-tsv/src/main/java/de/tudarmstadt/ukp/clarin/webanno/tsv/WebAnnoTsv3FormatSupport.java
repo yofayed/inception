@@ -25,17 +25,22 @@ import org.apache.uima.cas.CAS;
 import org.apache.uima.collection.CollectionReaderDescription;
 import org.apache.uima.resource.ResourceInitializationException;
 import org.apache.uima.resource.metadata.TypeSystemDescription;
-import org.springframework.stereotype.Component;
 
 import de.tudarmstadt.ukp.clarin.webanno.api.format.FormatSupport;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
+import de.tudarmstadt.ukp.clarin.webanno.tsv.config.WebAnnoFormatsAutoConfiguration;
 
-@Component
+/**
+ * <p>
+ * This class is exposed as a Spring Component via
+ * {@link WebAnnoFormatsAutoConfiguration#webAnnoTsv3FormatSupport()}.
+ * </p>
+ */
 public class WebAnnoTsv3FormatSupport
     implements FormatSupport
 {
     public static final String ID = "ctsv3";
-    public static final String NAME = "WebAnno TSV v3.2 (WebAnno v3.x)";
+    public static final String NAME = "WebAnno TSV v3.3 (WebAnno v3.x)";
 
     @Override
     public String getId()
@@ -57,6 +62,12 @@ public class WebAnnoTsv3FormatSupport
 
     @Override
     public boolean isWritable()
+    {
+        return true;
+    }
+
+    @Override
+    public boolean isProneToInconsistencies()
     {
         return true;
     }

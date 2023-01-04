@@ -18,13 +18,16 @@
 package de.tudarmstadt.ukp.inception.sharing;
 
 import java.util.Date;
+import java.util.Optional;
 
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
+import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
+import de.tudarmstadt.ukp.inception.sharing.model.ProjectInvite;
 
 public interface InviteService
 {
     /**
-     * Generate random expiring invite id for the project and save to database
+     * @return random expiring invite id for the project and save to database
      * 
      * @param aProject
      *            the given project
@@ -40,7 +43,7 @@ public interface InviteService
     void removeInviteID(Project aProject);
 
     /**
-     * Get invite id for given project if it exists and has expired yet
+     * @return invite id for given project if it exists and has expired yet.
      * 
      * @param aProject
      *            the given project
@@ -48,7 +51,7 @@ public interface InviteService
     String getValidInviteID(Project aProject);
 
     /**
-     * Check if given invite ID is valid for the given project
+     * @return if given invite ID is valid for the given project
      * 
      * @param aProject
      *            the relevant project
@@ -58,22 +61,46 @@ public interface InviteService
     boolean isValidInviteLink(Project aProject, String aInviteId);
 
     /**
-     * Get the expiration date of the invite link belonging to the given project
-     * @param aProject the corresponding project
+     * @return the expiration date of the invite link belonging to the given project
+     * 
+     * @param aProject
+     *            the corresponding project
      */
     Date getExpirationDate(Project aProject);
 
     /**
      * Extend validity of the invite link associated with the given project for another year.
+     * 
+     * @param aProject
+     *            a project
      */
     void extendInviteLinkDate(Project aProject);
 
     /**
-     * Set expiration date of the invite link of the given project or 
-     * generate new invite link with the given date
-     * @param aProject the project
-     * @param aExpirationDate the new expiration date
+     * Set expiration date of the invite link of the given project or generate new invite link with
+     * the given date
+     * 
+     * @param aProject
+     *            the project
+     * @param aExpirationDate
+     *            the new expiration date
      * @return if invite was generated or date was updated
      */
     boolean generateInviteWithExpirationDate(Project aProject, Date aExpirationDate);
+
+    ProjectInvite readProjectInvite(Project aProject);
+
+    void writeProjectInvite(ProjectInvite aInvite);
+
+    Optional<User> getProjectUser(Project aProject, String aUsername);
+
+    User getOrCreateProjectUser(Project aProject, String aUsername);
+
+    boolean isProjectAnnotationComplete(ProjectInvite aInvite);
+
+    boolean isDateExpired(ProjectInvite aInvite);
+
+    boolean isMaxAnnotatorCountReached(ProjectInvite aInvite);
+
+    String getFullInviteLinkUrl(ProjectInvite aInvite);
 }

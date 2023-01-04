@@ -20,26 +20,26 @@ package de.tudarmstadt.ukp.clarin.webanno.brat.render.model;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.VID;
-import de.tudarmstadt.ukp.clarin.webanno.brat.message.BeanAsArraySerializer;
+import de.tudarmstadt.ukp.inception.rendering.vmodel.VID;
+import de.tudarmstadt.ukp.inception.support.json.BeanAsArraySerializer;
 
 @JsonSerialize(using = BeanAsArraySerializer.class)
 @JsonPropertyOrder(value = { "vid" })
 public class AnnotationMarker
     implements Marker
 {
-    private final VID[] vid;
+    private final VID vid;
     private String type;
 
     public AnnotationMarker(String aType, VID aVid)
     {
-        vid = new VID[] { aVid };
+        vid = aVid;
         type = aType;
     }
 
     public VID getVid()
     {
-        return vid[0];
+        return vid;
     }
 
     @Override

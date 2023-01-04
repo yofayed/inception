@@ -17,16 +17,17 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.curation.casdiff;
 
-import static de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst.RELATION_TYPE;
-import static de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst.SPAN_TYPE;
-import static de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil.getAddr;
-import static de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil.selectFsByAddr;
 import static de.tudarmstadt.ukp.clarin.webanno.model.LinkMode.NONE;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.RELATION_TYPE;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.SPAN_TYPE;
 import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
 import static java.util.Collections.emptySet;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.toList;
+import static org.apache.commons.collections4.CollectionUtils.subtract;
 import static org.apache.commons.lang3.StringUtils.abbreviateMiddle;
 import static org.apache.uima.fit.util.CasUtil.select;
-import static org.apache.uima.fit.util.CasUtil.selectCovered;
 
 import java.io.PrintStream;
 import java.io.Serializable;
@@ -41,8 +42,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.uima.cas.ArrayFS;
@@ -57,8 +60,6 @@ import org.apache.uima.fit.util.FSUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.adapter.RelationAdapter;
 import de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil;
 import de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.api.DiffAdapter;
 import de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.api.DiffAdapter_ImplBase;
@@ -68,6 +69,10 @@ import de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.relation.RelationDiffA
 import de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.span.SpanDiffAdapter;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
+import de.tudarmstadt.ukp.clarin.webanno.model.Project;
+import de.tudarmstadt.ukp.clarin.webanno.support.uima.ICasUtil;
+import de.tudarmstadt.ukp.inception.annotation.layer.relation.RelationAdapter;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
 
 public class CasDiff
 {
@@ -77,13 +82,11 @@ public class CasDiff
 
     private final Map<Position, ConfigurationSet> configSets = new TreeMap<>();
 
-    private final Map<String, String[]> sortedFeaturesCache = new HashMap<>();
-
     private int begin;
 
     private int end;
 
-    private final Map<String, DiffAdapter> typeAdapters = new HashMap<>();
+    private final Map<String, DiffAdapter> diffAdapters = new HashMap<>();
 
     private final LinkCompareBehavior linkCompareBehavior;
 
@@ -97,7 +100,7 @@ public class CasDiff
         linkCompareBehavior = aLinkCompareBehavior;
         if (aAdapters != null) {
             for (DiffAdapter adapter : aAdapters) {
-                typeAdapters.put(adapter.getType(), adapter);
+                diffAdapters.put(adapter.getType(), adapter);
             }
         }
     }
@@ -109,6 +112,8 @@ public class CasDiff
      * @param aAdapters
      *            a set of diff adapters telling how the diff algorithm should handle different
      *            features
+     * @param aLinkCompareBehavior
+     *            the link comparison mode
      * @param aCasMap
      *            a set of CASes, each associated with an ID
      * @param aBegin
@@ -134,6 +139,8 @@ public class CasDiff
      * 
      * @param aAdapters
      *            a set of diff adapters how the diff algorithm should handle different features
+     * @param aLinkCompareBehavior
+     *            the link comparison mode
      * @param aCasMap
      *            a set of CASes, each associated with an ID
      * @return a diff result.
@@ -151,6 +158,8 @@ public class CasDiff
      * @param aAdapters
      *            a set of diff adapters telling how the diff algorithm should handle different
      *            features
+     * @param aLinkCompareBehavior
+     *            the link comparison mode
      * @param aCasMap
      *            a set of CASes, each associated with an ID
      * @param aBegin
@@ -239,18 +248,23 @@ public class CasDiff
 
     private DiffAdapter getAdapter(String aType)
     {
-        DiffAdapter adapter = typeAdapters.get(aType);
+        DiffAdapter adapter = diffAdapters.get(aType);
         if (adapter == null) {
             LOG.warn("No diff adapter for type [" + aType + "] -- treating as without features");
             adapter = new SpanDiffAdapter(aType, emptySet());
-            typeAdapters.put(aType, adapter);
+            diffAdapters.put(aType, adapter);
         }
         return adapter;
     }
 
     public Map<String, DiffAdapter> getTypeAdapters()
     {
-        return typeAdapters;
+        return diffAdapters;
+    }
+
+    public Map<String, List<CAS>> getCasMap()
+    {
+        return cases;
     }
 
     /**
@@ -316,12 +330,14 @@ public class CasDiff
             return;
         }
 
+        DiffAdapter adapter = getAdapter(aType);
+
         Collection<AnnotationFS> annotations;
         if (begin == -1 && end == -1) {
             annotations = select(aCas, type);
         }
         else {
-            annotations = selectCovered(aCas, type, begin, end);
+            annotations = adapter.selectAnnotationsInWindow(aCas, begin, end);
         }
 
         if (annotations.isEmpty()) {
@@ -334,17 +350,16 @@ public class CasDiff
                 + annotations.size() + "] annotations of type [" + aType + "]");
 
         int posBefore = configSets.keySet().size();
-        LOG.debug("Positions before: [" + posBefore + "]");
+        LOG.debug("Positions before: [{}]", posBefore);
 
         for (AnnotationFS fs : annotations) {
             List<Position> positions = new ArrayList<>();
 
             // Get/create configuration set at the current position
-            positions.add(getAdapter(aType).getPosition(aCasId, fs));
+            positions.add(adapter.getPosition(aCasId, fs));
 
             // Generate secondary positions for multi-link features
-            positions.addAll(
-                    getAdapter(aType).generateSubPositions(aCasId, fs, linkCompareBehavior));
+            positions.addAll(adapter.generateSubPositions(aCasId, fs, linkCompareBehavior));
 
             for (Position pos : positions) {
                 ConfigurationSet configSet = configSets.get(pos);
@@ -352,11 +367,6 @@ public class CasDiff
                     configSet = new ConfigurationSet(pos);
                     configSets.put(pos, configSet);
                 }
-
-                // REC: appears to be left-over debug code that can be removed...
-                // if (pos.getClass() != configSet.position.getClass()) {
-                // pos.compareTo(configSet.position);
-                // }
 
                 assert pos.getClass() == configSet.position.getClass() : "Position type mismatch ["
                         + pos.getClass() + "] vs [" + configSet.position.getClass() + "]";
@@ -366,12 +376,8 @@ public class CasDiff
             }
         }
 
-        LOG.debug("Positions after: [" + configSets.keySet().size() + "] (delta: "
-                + (configSets.keySet().size() - posBefore) + ")");
-
-        //
-        // // Remember that we have processed the type
-        // entryTypes.add(aType);
+        LOG.debug("Positions after: [{}] (delta: {})", configSets.keySet().size(),
+                (configSets.keySet().size() - posBefore));
     }
 
     private void addConfiguration(ConfigurationSet aSet, String aCasGroupId, FeatureStructure aFS)
@@ -383,7 +389,7 @@ public class CasDiff
         if (aSet.position.getFeature() == null) {
             // Check if this configuration is already present
             Configuration configuration = null;
-            for (Configuration cfg : aSet.configurations) {
+            for (Configuration cfg : aSet.getConfigurations()) {
                 // Handle main positions
                 if (equalsFS(cfg.getRepresentative(cases), aFS)) {
                     configuration = cfg;
@@ -394,7 +400,7 @@ public class CasDiff
             // Not found, add new one
             if (configuration == null) {
                 configuration = new Configuration(aSet.position);
-                aSet.configurations.add(configuration);
+                aSet.addConfiguration(configuration);
             }
 
             configuration.add(aCasGroupId, aFS);
@@ -410,7 +416,8 @@ public class CasDiff
 
             // For each slot at the given position in the FS-to-be-added, we need find a
             // corresponding configuration
-            ArrayFS links = (ArrayFS) aFS.getFeatureValue(feat);
+
+            var links = FSUtil.getFeature(aFS, feat, ArrayFS.class);
             for (int i = 0; i < links.size(); i++) {
                 FeatureStructure link = links.get(i);
                 DiffAdapter adapter = getAdapter(aFS.getType().getName());
@@ -432,9 +439,9 @@ public class CasDiff
                     cfgLoop: for (Configuration cfg : aSet.configurations) {
                         FeatureStructure repFS = cfg.getRepresentative(cases);
                         AID repAID = cfg.getRepresentativeAID();
-                        FeatureStructure repLink = ((ArrayFS) repFS.getFeatureValue(
-                                repFS.getType().getFeatureByBaseName(decl.getName())))
-                                        .get(repAID.index);
+                        FeatureStructure repLink = FSUtil.getFeature(repFS,
+                                repFS.getType().getFeatureByBaseName(decl.getName()), ArrayFS.class)
+                                .get(repAID.index);
                         AnnotationFS repTarget = (AnnotationFS) repLink.getFeatureValue(
                                 repLink.getType().getFeatureByBaseName(decl.getTargetFeature()));
 
@@ -460,9 +467,9 @@ public class CasDiff
                     cfgLoop: for (Configuration cfg : aSet.configurations) {
                         FeatureStructure repFS = cfg.getRepresentative(cases);
                         AID repAID = cfg.getRepresentativeAID();
-                        FeatureStructure repLink = ((ArrayFS) repFS.getFeatureValue(
-                                repFS.getType().getFeatureByBaseName(decl.getName())))
-                                        .get(repAID.index);
+                        FeatureStructure repLink = FSUtil.getFeature(repFS,
+                                repFS.getType().getFeatureByBaseName(decl.getName()), ArrayFS.class)
+                                .get(repAID.index);
                         String linkRole = repLink.getStringValue(
                                 repLink.getType().getFeatureByBaseName(decl.getRoleFeature()));
 
@@ -510,8 +517,8 @@ public class CasDiff
         }
 
         /**
-         * Gets the total number of configurations recorded in this set. If a configuration has been
-         * seen in multiple CASes, it will be counted multiple times.
+         * @return the total number of configurations recorded in this set. If a configuration has
+         *         been seen in multiple CASes, it will be counted multiple times.
          */
         public int getRecordedConfigurationCount()
         {
@@ -536,6 +543,23 @@ public class CasDiff
         public List<Configuration> getConfigurations()
         {
             return configurations;
+        }
+
+        public void addConfiguration(Configuration aCfg)
+        {
+            configurations.add(aCfg);
+        }
+
+        public Optional<Configuration> findConfiguration(String aCasGroupId, FeatureStructure aFS)
+        {
+            return configurations.stream().filter(cfg -> cfg.contains(aCasGroupId, aFS))
+                    .findFirst();
+        }
+
+        public Optional<Configuration> findConfiguration(String aCasGroupId, AID aAID)
+        {
+            return configurations.stream().filter(cfg -> cfg.contains(aCasGroupId, aAID))
+                    .findFirst();
         }
 
         /**
@@ -603,7 +627,7 @@ public class CasDiff
         }
 
         // Trivial case
-        if (aFS1.getCAS() == aFS2.getCAS() && getAddr(aFS1) == getAddr(aFS2)) {
+        if (aFS1.getCAS() == aFS2.getCAS() && ICasUtil.getAddr(aFS1) == ICasUtil.getAddr(aFS2)) {
             return true;
         }
 
@@ -615,22 +639,7 @@ public class CasDiff
             return false;
         }
 
-        assert type1.getNumberOfFeatures() == type2.getNumberOfFeatures();
-
-        // Sort features by name to be independent over implementation details that may change the
-        // order of the features as returned from Type.getFeatures().
-        String[] cachedSortedFeatures = sortedFeaturesCache.get(type1.getName());
-        if (cachedSortedFeatures == null) {
-            cachedSortedFeatures = new String[type1.getNumberOfFeatures()];
-            int i = 0;
-            for (Feature f : aFS1.getType().getFeatures()) {
-                cachedSortedFeatures[i] = f.getShortName();
-                i++;
-            }
-            sortedFeaturesCache.put(type1.getName(), cachedSortedFeatures);
-        }
-
-        DiffAdapter adapter = typeAdapters.get(type1.getName());
+        DiffAdapter adapter = diffAdapters.get(type1.getName());
 
         if (adapter == null) {
             LOG.warn("No diff adapter for type [" + type1.getName() + "] -- ignoring!");
@@ -638,10 +647,17 @@ public class CasDiff
         }
 
         // Only consider label features. In particular these must not include position features
-        // such as begin, end, etc.
-        List<String> sortedFeatures = new ArrayList<>(asList(cachedSortedFeatures));
+        // such as begin, end, etc. Mind that the types may come from different CASes at different
+        // levels of upgrading, so it could be that the types actually have slightly different
+        // features.
         Set<String> labelFeatures = adapter.getLabelFeatures();
-        sortedFeatures.removeIf(f -> !labelFeatures.contains(f));
+        List<String> sortedFeatures = Stream
+                .concat(type1.getFeatures().stream().map(Feature::getShortName),
+                        type2.getFeatures().stream().map(Feature::getShortName)) //
+                .filter(labelFeatures::contains) //
+                .sorted() //
+                .distinct() //
+                .collect(toList());
 
         if (!recurseIntoLinkFeatures) {
             // #1795 Chili REC: We can/should change CasDiff2 such that it does not recurse into
@@ -671,6 +687,14 @@ public class CasDiff
             // When we get here, f1 or f2 can still be null
 
             switch (range.getName()) {
+            case CAS.TYPE_NAME_STRING_ARRAY: {
+                Set<?> value1 = FSUtil.getFeature(aFS1, f1, Set.class);
+                Set<?> value2 = FSUtil.getFeature(aFS2, f2, Set.class);
+                if (!value1.equals(value2)) {
+                    return false;
+                }
+                break;
+            }
             case CAS.TYPE_NAME_BOOLEAN: {
                 boolean value1 = f1 != null ? aFS1.getBooleanValue(f1) : false;
                 boolean value2 = f2 != null ? aFS2.getBooleanValue(f2) : false;
@@ -815,6 +839,11 @@ public class CasDiff
          */
         private boolean stacked = false;
 
+        public String getRepresentativeCasGroupId()
+        {
+            return fsAddresses.entrySet().iterator().next().getKey();
+        }
+
         public Set<String> getCasGroupIds()
         {
             return fsAddresses.keySet();
@@ -835,20 +864,26 @@ public class CasDiff
             return stacked;
         }
 
-        private void add(String aCasGroupId, FeatureStructure aFS)
+        /**
+         * Visible for testing only!
+         */
+        @SuppressWarnings("javadoc")
+        public void add(String aCasGroupId, AID aAID)
         {
-            AID old = fsAddresses.put(aCasGroupId, new AID(getAddr(aFS)));
+            AID old = fsAddresses.put(aCasGroupId, aAID);
             if (old != null) {
                 stacked = true;
             }
         }
 
+        private void add(String aCasGroupId, FeatureStructure aFS)
+        {
+            add(aCasGroupId, new AID(ICasUtil.getAddr(aFS)));
+        }
+
         private void add(String aCasGroupId, FeatureStructure aFS, String aFeature, int aSlot)
         {
-            AID old = fsAddresses.put(aCasGroupId, new AID(getAddr(aFS), aFeature, aSlot));
-            if (old != null) {
-                stacked = true;
-            }
+            add(aCasGroupId, new AID(ICasUtil.getAddr(aFS), aFeature, aSlot));
         }
 
         public AID getRepresentativeAID()
@@ -860,7 +895,7 @@ public class CasDiff
         public FeatureStructure getRepresentative(Map<String, List<CAS>> aCasMap)
         {
             Entry<String, AID> e = fsAddresses.entrySet().iterator().next();
-            return selectFsByAddr(aCasMap.get(e.getKey()).get(position.getCasId()),
+            return ICasUtil.selectFsByAddr(aCasMap.get(e.getKey()).get(position.getCasId()),
                     e.getValue().addr);
         }
 
@@ -872,6 +907,16 @@ public class CasDiff
         public AID getAID(String aCasGroupId)
         {
             return fsAddresses.get(aCasGroupId);
+        }
+
+        public boolean contains(String aCasGroupId, FeatureStructure aFS)
+        {
+            return new AID(ICasUtil.getAddr(aFS)).equals(fsAddresses.get(aCasGroupId));
+        }
+
+        public boolean contains(String aCasGroupId, AID aAID)
+        {
+            return aAID.equals(fsAddresses.get(aCasGroupId));
         }
 
         public <T extends FeatureStructure> FeatureStructure getFs(String aCasGroupId, int aCasId,
@@ -892,7 +937,7 @@ public class CasDiff
                 return null;
             }
 
-            return selectFsByAddr(cas, aid.addr);
+            return ICasUtil.selectFsByAddr(cas, aid.addr);
         }
 
         // FIXME aCasId parameter should not be required as we can get it from the position
@@ -940,18 +985,27 @@ public class CasDiff
 
         private final Map<Position, ConfigurationSet> data;
         private final Set<String> casGroupIds;
-        private final Map<ConfigurationSet, Boolean> completenessCache = new HashMap<>();
-        private final boolean cachedHasDifferences;
+        private final Map<ConfigurationSet, Set<String>> unseenCasGroupIDsCache = new HashMap<>();
+
+        private Boolean cachedHasDifferences;
 
         private DiffResult(CasDiff aDiff)
         {
             data = Collections.unmodifiableMap(aDiff.configSets);
             casGroupIds = new LinkedHashSet<>(aDiff.cases.keySet());
-            cachedHasDifferences = !getDifferingConfigurationSets().isEmpty();
+        }
+
+        public Set<String> getCasGroupIds()
+        {
+            return casGroupIds;
         }
 
         public boolean hasDifferences()
         {
+            if (cachedHasDifferences == null) {
+                cachedHasDifferences = !getDifferingConfigurationSets().isEmpty();
+            }
+
             return cachedHasDifferences;
         }
 
@@ -975,6 +1029,19 @@ public class CasDiff
             return data.get(aPosition);
         }
 
+        public Optional<Configuration> findConfiguration(String aRepresentativeCasGroupId, AID aAid)
+        {
+            for (ConfigurationSet cfgSet : getConfigurationSets()) {
+                Optional<Configuration> cfg = cfgSet.findConfiguration(aRepresentativeCasGroupId,
+                        aAid);
+                if (cfg.isPresent()) {
+                    return cfg;
+                }
+            }
+
+            return Optional.empty();
+        }
+
         /**
          * Determine if all CASes see agreed on the given configuration set. This method returns
          * {@code false} if there was disagreement (there are multiple configurations in the set).
@@ -987,15 +1054,44 @@ public class CasDiff
          */
         public boolean isAgreement(ConfigurationSet aConfigurationSet)
         {
+            return isAgreementWithExceptions(aConfigurationSet);
+        }
+
+        /**
+         * Determine if all CASes see agreed on the given configuration set. This method returns
+         * {@code false} if there was disagreement (there are multiple configurations in the set).
+         * When using this method, make sure you also take into account whether the set is actually
+         * complete (cf. {@link #isComplete(ConfigurationSet)}.
+         * 
+         * @param aConfigurationSet
+         *            a configuration set.
+         * @param aCasGroupIDsToIgnore
+         *            the exceptions - these CAS group IDs do not count towards completeness.
+         * @return if all seen CASes agreed on this set.
+         */
+        public boolean isAgreementWithExceptions(ConfigurationSet aConfigurationSet,
+                String... aCasGroupIDsToIgnore)
+        {
             if (data.get(aConfigurationSet.position) != aConfigurationSet) {
                 throw new IllegalArgumentException(
                         "Configuration set does not belong to this diff or positions mismatch");
             }
 
-            // If there is only a single configuration in the set, we call it an agreement
-            if (aConfigurationSet.configurations.size() == 1) {
-                return true;
+            // Shortcut: no exceptions
+            if (aCasGroupIDsToIgnore == null || aCasGroupIDsToIgnore.length == 0) {
+                // If there is only a single configuration in the set, we call it an agreement
+                return aConfigurationSet.configurations.size() == 1;
             }
+
+            Set<String> exceptions = new HashSet<>(asList(aCasGroupIDsToIgnore));
+            return aConfigurationSet.configurations.stream()
+                    // Ignore configuration sets containing only exceptions and nothing else
+                    .filter(cfg -> !subtract(cfg.getCasGroupIds(), exceptions).isEmpty())
+                    // We can stop once we found 2 because if there are more than two configurations
+                    // then it cannot be an agreement.
+                    .limit(2)
+                    // So if there is exactly one configuration remaining, it is an agreement
+                    .count() == 1;
 
             // Issue 21 GitHub - REC - not really sure if we should call this an agreement
             // // If there are multiple configurations in the set, we only call it an agreement if
@@ -1007,8 +1103,6 @@ public class CasDiff
             // return true;
             // }
             // }
-
-            return false;
         }
 
         /**
@@ -1020,29 +1114,62 @@ public class CasDiff
          */
         public boolean isComplete(ConfigurationSet aConfigurationSet)
         {
+            return isCompleteWithExceptions(aConfigurationSet);
+        }
+
+        /**
+         * Determine if the given set has been observed in all CASes but not considering the CASes
+         * from the given CAS groups.
+         * 
+         * @param aConfigurationSet
+         *            a configuration set.
+         * @param aCasGroupIDsToIgnore
+         *            the exceptions - these CAS group IDs do not count towards completeness.
+         * @return if seen in all CASes.
+         */
+        public boolean isCompleteWithExceptions(ConfigurationSet aConfigurationSet,
+                String... aCasGroupIDsToIgnore)
+        {
             if (data.get(aConfigurationSet.position) != aConfigurationSet) {
                 throw new IllegalArgumentException(
                         "Configuration set does not belong to this diff or positions mismatch");
             }
 
-            Boolean complete = completenessCache.get(aConfigurationSet);
-            if (complete == null) {
-                HashSet<String> unseenGroupCasIDs = new HashSet<>(casGroupIds);
+            Set<String> unseenGroupCasIDs = unseenCasGroupIDsCache.get(aConfigurationSet);
+            if (unseenGroupCasIDs == null) {
+                unseenGroupCasIDs = new HashSet<>(casGroupIds);
                 for (Configuration cfg : aConfigurationSet.configurations) {
                     unseenGroupCasIDs.removeAll(cfg.fsAddresses.keySet());
                 }
-                complete = unseenGroupCasIDs.isEmpty();
-                completenessCache.put(aConfigurationSet, complete);
+                unseenCasGroupIDsCache.put(aConfigurationSet, unseenGroupCasIDs);
             }
 
-            return complete;
+            // Short-cut: no exceptions to consider
+            if (aCasGroupIDsToIgnore == null || aCasGroupIDsToIgnore.length == 0) {
+                return unseenGroupCasIDs.isEmpty();
+            }
+
+            // Short-cut: the common use-case is to ignore a single exception, usually the curator
+            if (aCasGroupIDsToIgnore.length == 1) {
+                return unseenGroupCasIDs.size() == 1
+                        && unseenGroupCasIDs.contains(aCasGroupIDsToIgnore[0]);
+            }
+
+            // The set is complete if the unseen CAS group IDs match exactly the exceptions.
+            return unseenGroupCasIDs.containsAll(asList(aCasGroupIDsToIgnore));
         }
 
         public Map<Position, ConfigurationSet> getDifferingConfigurationSets()
         {
+            return getDifferingConfigurationSetsWithExceptions();
+        }
+
+        public Map<Position, ConfigurationSet> getDifferingConfigurationSetsWithExceptions(
+                String... aCasGroupIDsToIgnore)
+        {
             Map<Position, ConfigurationSet> diffs = new LinkedHashMap<>();
             for (Entry<Position, ConfigurationSet> e : data.entrySet()) {
-                if (!isAgreement(e.getValue())) {
+                if (!isAgreementWithExceptions(e.getValue(), aCasGroupIDsToIgnore)) {
                     diffs.put(e.getKey(), e.getValue());
                 }
             }
@@ -1052,9 +1179,20 @@ public class CasDiff
 
         public Map<Position, ConfigurationSet> getIncompleteConfigurationSets()
         {
+            return getIncompleteConfigurationSetsWithExceptions();
+        }
+
+        /**
+         * @return the incomplete configuration sets per position
+         * @param aCasGroupIDsToIgnore
+         *            the exceptions - these CAS group IDs do not count towards completeness.
+         */
+        public Map<Position, ConfigurationSet> getIncompleteConfigurationSetsWithExceptions(
+                String... aCasGroupIDsToIgnore)
+        {
             Map<Position, ConfigurationSet> diffs = new LinkedHashMap<>();
             for (Entry<Position, ConfigurationSet> e : data.entrySet()) {
-                if (!isComplete(e.getValue())) {
+                if (!isCompleteWithExceptions(e.getValue(), aCasGroupIDsToIgnore)) {
                     diffs.put(e.getKey(), e.getValue());
                 }
             }
@@ -1097,8 +1235,17 @@ public class CasDiff
     }
 
     public static List<DiffAdapter> getDiffAdapters(AnnotationSchemaService schemaService,
-            Iterable<AnnotationLayer> aLayers)
+            Collection<AnnotationLayer> aLayers)
     {
+        if (aLayers.isEmpty()) {
+            return emptyList();
+        }
+
+        Project project = aLayers.iterator().next().getProject();
+
+        var featuresByLayer = schemaService.listSupportedFeatures(project).stream() //
+                .collect(groupingBy(AnnotationFeature::getLayer));
+
         List<DiffAdapter> adapters = new ArrayList<>();
         nextLayer: for (AnnotationLayer layer : aLayers) {
             if (!layer.isEnabled()) {
@@ -1106,8 +1253,8 @@ public class CasDiff
             }
 
             Set<String> labelFeatures = new LinkedHashSet<>();
-            nextFeature: for (AnnotationFeature f : schemaService.listSupportedFeatures(layer)) {
-                if (!f.isEnabled()) {
+            nextFeature: for (var f : featuresByLayer.getOrDefault(layer, emptyList())) {
+                if (!f.isEnabled() || !f.isCuratable()) {
                     continue nextFeature;
                 }
 
@@ -1138,7 +1285,7 @@ public class CasDiff
 
             adapters.add(adapter);
 
-            nextFeature: for (AnnotationFeature f : schemaService.listSupportedFeatures(layer)) {
+            nextFeature: for (var f : featuresByLayer.getOrDefault(layer, emptyList())) {
                 if (!f.isEnabled()) {
                     continue nextFeature;
                 }
@@ -1184,7 +1331,7 @@ public class CasDiff
     // /**
     // * Rebuilds the diff with the current offsets and entry types. This can be used to fix the
     // diff
-    // * after reattaching to CASes that have changed. Mind that the diff results can be differnent
+    // * after reattaching to CASes that have changed. Mind that the diff results can be different
     // * due to the changes.
     // */
     // public void rebuild()

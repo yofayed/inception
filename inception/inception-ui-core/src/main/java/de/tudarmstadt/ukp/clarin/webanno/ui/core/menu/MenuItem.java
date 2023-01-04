@@ -20,7 +20,7 @@ package de.tudarmstadt.ukp.clarin.webanno.ui.core.menu;
 import org.apache.wicket.Page;
 
 import de.agilecoders.wicket.core.markup.html.bootstrap.image.IconType;
-import de.tudarmstadt.ukp.clarin.webanno.ui.core.WicketApplicationBase;
+import wicket.contrib.input.events.key.KeyType;
 
 public interface MenuItem
 {
@@ -34,18 +34,5 @@ public interface MenuItem
 
     boolean applies();
 
-    /**
-     * {@link WicketApplicationBase} introduces a custom authorization service which prevents access
-     * to a page if the user is not able to see the corresponding menu item (cf.
-     * {@link #applies()}). However, in some cases, it may be necessary to grant the user direct
-     * access to a page even if the user does not see the corresponding menu item. For example,
-     * users should not see the menu item for the user management page, but they may access this
-     * page directly in order to edit their own profile. In such cases, this method should return
-     * {@code true}. Use this very carefully and ensure that the proper access checks are performed
-     * on the target page.
-     */
-    default boolean isDirectAccessAllowed()
-    {
-        return false;
-    }
+    KeyType[] shortcut();
 }

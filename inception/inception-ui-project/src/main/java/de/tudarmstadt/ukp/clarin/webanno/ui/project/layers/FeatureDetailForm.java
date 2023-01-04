@@ -17,17 +17,22 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.ui.project.layers;
 
-import static de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst.CHAIN_TYPE;
-import static de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst.RELATION_TYPE;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.CHAIN_TYPE;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.FEAT_REL_SOURCE;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.FEAT_REL_TARGET;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.RELATION_TYPE;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.RESTRICTED_FEATURE_NAMES;
 import static de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior.enabledWhen;
 import static de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior.visibleWhen;
 import static de.tudarmstadt.ukp.clarin.webanno.ui.project.layers.ProjectLayersPanel.MID_FEATURE_DETAIL_FORM;
 import static de.tudarmstadt.ukp.clarin.webanno.ui.project.layers.ProjectLayersPanel.MID_FEATURE_SELECTION_FORM;
+import static java.util.Arrays.asList;
 import static java.util.Objects.isNull;
+import static org.apache.commons.lang3.StringUtils.isAlphanumeric;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
-import static org.apache.wicket.util.string.Strings.escapeMarkup;
+import static org.apache.commons.lang3.StringUtils.isNumeric;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.uima.cas.CAS;
 import org.apache.wicket.Component;
 import org.apache.wicket.ajax.AjaxRequestTarget;
@@ -45,19 +50,15 @@ import org.apache.wicket.markup.html.panel.EmptyPanel;
 import org.apache.wicket.model.CompoundPropertyModel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
+import org.apache.wicket.model.PropertyModel;
 import org.apache.wicket.model.StringResourceModel;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.select.BootstrapSelect;
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
 import de.tudarmstadt.ukp.clarin.webanno.api.CasStorageService;
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
-import de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupport;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupportRegistry;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureType;
 import de.tudarmstadt.ukp.clarin.webanno.api.event.LayerConfigurationChangedEvent;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
+import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.support.dialog.ChallengeResponseDialog;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxButton;
@@ -65,6 +66,10 @@ import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaButton;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaModelAdapter;
 import de.tudarmstadt.ukp.clarin.webanno.support.spring.ApplicationEventPublisherHolder;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupport;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupportRegistry;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureType;
 
 public class FeatureDetailForm
     extends Form<AnnotationFeature>
@@ -105,6 +110,7 @@ public class FeatureDetailForm
         add(new TextArea<String>("description"));
         add(new CheckBox("enabled").setOutputMarkupPlaceholderTag(true));
         add(new CheckBox("visible").setOutputMarkupPlaceholderTag(true));
+        add(new CheckBox("curatable").setOutputMarkupPlaceholderTag(true));
         add(new CheckBox("hideUnconstraintFeature").setOutputMarkupPlaceholderTag(true));
         add(new CheckBox("remember").setOutputMarkupPlaceholderTag(true));
         add(new CheckBox("includeInHover").setOutputMarkupPlaceholderTag(true)
@@ -117,16 +123,20 @@ public class FeatureDetailForm
         required = new CheckBox("required");
         required.setOutputMarkupPlaceholderTag(true);
         required.add(LambdaBehavior.onConfigure(_this -> {
-            boolean relevant = CAS.TYPE_NAME_STRING
-                    .equals(FeatureDetailForm.this.getModelObject().getType());
-            _this.setEnabled(relevant);
-            if (!relevant) {
-                FeatureDetailForm.this.getModelObject().setRequired(false);
+            boolean mandatory = asList(CAS.TYPE_NAME_INTEGER, CAS.TYPE_NAME_FLOAT,
+                    CAS.TYPE_NAME_DOUBLE, CAS.TYPE_NAME_BOOLEAN)
+                            .contains(FeatureDetailForm.this.getModelObject().getType());
+            _this.setEnabled(!mandatory);
+            if (mandatory) {
+                required.setModel(Model.of(true));
+            }
+            else {
+                required.setModel(PropertyModel.of(FeatureDetailForm.this.getModel(), "required"));
             }
         }));
         add(required);
 
-        add(featureType = new BootstrapSelect<FeatureType>("type")
+        add(featureType = new DropDownChoice<FeatureType>("type")
         {
             private static final long serialVersionUID = 9029205407108101183L;
 
@@ -137,7 +147,7 @@ public class FeatureDetailForm
                 Component newTraits;
                 if (FeatureDetailForm.this.getModelObject() != null && getModelObject() != null) {
                     FeatureSupport<?> fs = featureSupportRegistry
-                            .getFeatureSupport(getModelObject().getFeatureSupportId());
+                            .getExtension(getModelObject().getFeatureSupportId()).orElseThrow();
                     newTraits = fs.createTraitsEditor(MID_TRAITS,
                             FeatureDetailForm.this.getModel());
                 }
@@ -222,12 +232,11 @@ public class FeatureDetailForm
         setModelObject(null);
     }
 
-    private void actionDelete(AjaxRequestTarget aTarget, Form aForm)
+    private void actionDelete(AjaxRequestTarget aTarget, Form<AnnotationLayer> aForm)
     {
         confirmationDialog
-                .setChallengeModel(new StringResourceModel("DeleteFeatureDialog.text", this)
-                        .setParameters(escapeMarkup(getModelObject().getName())));
-        confirmationDialog.setResponseModel(Model.of(getModelObject().getName()));
+                .setMessageModel(new StringResourceModel("DeleteFeatureDialog.text", this));
+        confirmationDialog.setExpectedResponseModel(getModel().map(AnnotationFeature::getName));
         confirmationDialog.show(aTarget);
 
         confirmationDialog.setConfirmAction((_target) -> {
@@ -247,56 +256,29 @@ public class FeatureDetailForm
         });
     }
 
-    private void actionSave(AjaxRequestTarget aTarget, Form<?> aForm)
+    private void actionSave(AjaxRequestTarget aTarget, Form<AnnotationLayer> aForm)
     {
         AnnotationFeature feature = getModelObject();
-        String name = feature.getUiName();
-        name = name.replaceAll("\\W", "");
-        // Check if feature name is not from the restricted names list
-        if (WebAnnoConst.RESTRICTED_FEATURE_NAMES.contains(name)) {
-            error("'" + feature.getUiName().toLowerCase() + " (" + name + ")'"
-                    + " is a reserved feature name. Please use a different name "
-                    + "for the feature.");
-            return;
-        }
-        if (RELATION_TYPE.equals(getModelObject().getLayer().getType())
-                && (name.equals(WebAnnoConst.FEAT_REL_SOURCE)
-                        || name.equals(WebAnnoConst.FEAT_REL_TARGET) || name.equals(FIRST)
-                        || name.equals(NEXT))) {
-            error("'" + feature.getUiName().toLowerCase() + " (" + name + ")'"
-                    + " is a reserved feature name on relation layers. . Please "
-                    + "use a different name for the feature.");
-            return;
-        }
-        // Checking if feature name doesn't start with a number or underscore
-        // And only uses alphanumeric characters
-        if (StringUtils.isNumeric(name.substring(0, 1)) || name.substring(0, 1).equals("_")
-                || !StringUtils.isAlphanumeric(name.replace("_", ""))) {
-            error("Feature names must start with a letter and consist only of "
-                    + "letters, digits, or underscores.");
-            return;
-        }
+
         if (isNull(feature.getId())) {
+            feature.setName(feature.getUiName().replaceAll("\\W", ""));
+
+            try {
+                validateFeatureName(feature);
+            }
+            catch (IllegalArgumentException e) {
+                error(e.getMessage());
+                return;
+            }
+
             feature.setLayer(getModelObject().getLayer());
             feature.setProject(getModelObject().getLayer().getProject());
 
-            if (annotationService.existsFeature(feature.getName(), feature.getLayer())) {
-                error("This feature is already added for this layer!");
-                return;
-            }
-
-            if (annotationService.existsFeature(name, feature.getLayer())) {
-                error("This feature already exists!");
-                return;
-            }
-            feature.setName(name);
-
             FeatureSupport<?> fs = featureSupportRegistry
-                    .getFeatureSupport(featureType.getModelObject().getFeatureSupportId());
+                    .getExtension(featureType.getModelObject().getFeatureSupportId()).orElseThrow();
 
             // Let the feature support finalize the configuration of the feature
             fs.configureFeature(feature);
-
         }
 
         // Save feature
@@ -314,5 +296,46 @@ public class FeatureDetailForm
         // Trigger LayerConfigurationChangedEvent
         applicationEventPublisherHolder.get()
                 .publishEvent(new LayerConfigurationChangedEvent(this, feature.getProject()));
+    }
+
+    private void validateFeatureName(AnnotationFeature aFeature)
+    {
+        String name = aFeature.getName();
+
+        if (isBlank(name)) {
+            throw new IllegalArgumentException("Feature names must start with a letter and consist "
+                    + "only of letters, digits, or underscores.");
+        }
+
+        // Check if feature name is not from the restricted names list
+        if (RESTRICTED_FEATURE_NAMES.contains(name)) {
+            throw new IllegalArgumentException("[" + name + "] is a reserved feature name. Please "
+                    + "use a different name for the feature.");
+        }
+
+        if (RELATION_TYPE.equals(aFeature.getLayer().getType())
+                && (name.equals(FEAT_REL_SOURCE) || name.equals(FEAT_REL_TARGET))) {
+            throw new IllegalArgumentException("[" + name + "] is a reserved feature name on "
+                    + "relation layers. Please use a different name for the feature.");
+        }
+
+        if (CHAIN_TYPE.equals(aFeature.getLayer().getType())
+                && (name.equals(FIRST) || name.equals(NEXT))) {
+            throw new IllegalArgumentException("[" + name + "] is a reserved feature name on "
+                    + "chain layers. Please use a different name for the feature.");
+        }
+
+        // Checking if feature name doesn't start with a number or underscore
+        // And only uses alphanumeric characters
+        if (isNumeric(name.substring(0, 1)) || name.substring(0, 1).equals("_")
+                || !isAlphanumeric(name.replace("_", ""))) {
+            throw new IllegalArgumentException("Feature names must start with a letter and consist "
+                    + "only of letters, digits, or underscores.");
+        }
+
+        if (annotationService.existsFeature(name, aFeature.getLayer())) {
+            throw new IllegalArgumentException(
+                    "A feature with the name [" + name + "] already exists on this layer!");
+        }
     }
 }

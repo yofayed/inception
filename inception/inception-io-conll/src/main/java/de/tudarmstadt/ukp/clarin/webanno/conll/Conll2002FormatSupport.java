@@ -25,19 +25,24 @@ import org.apache.uima.cas.CAS;
 import org.apache.uima.collection.CollectionReaderDescription;
 import org.apache.uima.resource.ResourceInitializationException;
 import org.apache.uima.resource.metadata.TypeSystemDescription;
-import org.dkpro.core.io.conll.Conll2000Reader;
-import org.dkpro.core.io.conll.Conll2000Writer;
-import org.springframework.stereotype.Component;
+import org.dkpro.core.io.conll.Conll2002Reader;
+import org.dkpro.core.io.conll.Conll2002Writer;
 
 import de.tudarmstadt.ukp.clarin.webanno.api.format.FormatSupport;
+import de.tudarmstadt.ukp.clarin.webanno.conll.config.ConllFormatsAutoConfiguration;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 
-@Component
+/**
+ * <p>
+ * This class is exposed as a Spring Component via
+ * {@link ConllFormatsAutoConfiguration#conll2002FormatSupport}.
+ * </p>
+ */
 public class Conll2002FormatSupport
     implements FormatSupport
 {
-    public static final String ID = "conll2000";
-    public static final String NAME = "CoNLL 2000";
+    public static final String ID = "conll2002";
+    public static final String NAME = "CoNLL 2002";
 
     @Override
     public String getId()
@@ -67,7 +72,7 @@ public class Conll2002FormatSupport
     public CollectionReaderDescription getReaderDescription(TypeSystemDescription aTSD)
         throws ResourceInitializationException
     {
-        return createReaderDescription(Conll2000Reader.class, aTSD);
+        return createReaderDescription(Conll2002Reader.class, aTSD);
     }
 
     @Override
@@ -75,6 +80,6 @@ public class Conll2002FormatSupport
             TypeSystemDescription aTSD, CAS aCAS)
         throws ResourceInitializationException
     {
-        return createEngineDescription(Conll2000Writer.class, aTSD);
+        return createEngineDescription(Conll2002Writer.class, aTSD);
     }
 }

@@ -17,13 +17,15 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.api.annotation.page;
 
-import static de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst.CURATION_USER;
-import static de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil.getSentenceNumber;
-import static de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil.selectSentenceCovering;
 import static de.tudarmstadt.ukp.clarin.webanno.model.Mode.CURATION;
 import static de.tudarmstadt.ukp.clarin.webanno.model.SourceDocumentState.CURATION_FINISHED;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.CURATION_USER;
+import static de.tudarmstadt.ukp.inception.rendering.selection.FocusPosition.CENTERED;
+import static java.lang.String.format;
+import static java.util.stream.Collectors.joining;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -32,17 +34,19 @@ import javax.persistence.NoResultException;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.uima.cas.CAS;
 import org.apache.uima.cas.FeatureStructure;
+import org.apache.uima.cas.SelectFSs;
 import org.apache.uima.cas.Type;
 import org.apache.uima.cas.text.AnnotationFS;
-import org.apache.wicket.Component;
+import org.apache.uima.jcas.cas.TOP;
 import org.apache.wicket.ajax.AjaxRequestTarget;
-import org.apache.wicket.behavior.Behavior;
 import org.apache.wicket.feedback.IFeedback;
-import org.apache.wicket.markup.head.IHeaderResponse;
-import org.apache.wicket.markup.head.OnLoadHeaderItem;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.LoadableDetachableModel;
 import org.apache.wicket.request.IRequestParameters;
+import org.apache.wicket.request.RequestHandlerExecutor.ReplaceHandlerException;
+import org.apache.wicket.request.Url;
+import org.apache.wicket.request.cycle.RequestCycle;
+import org.apache.wicket.request.flow.RedirectToUrlException;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 import org.apache.wicket.util.string.StringValue;
@@ -50,15 +54,13 @@ import org.apache.wicket.util.string.StringValueConversionException;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
 import org.wicketstuff.urlfragment.UrlFragment;
+import org.wicketstuff.urlfragment.UrlParametersReceivingBehavior;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.adapter.TypeAdapter;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.exception.AnnotationException;
 import de.tudarmstadt.ukp.clarin.webanno.api.annotation.exception.NotEditableException;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotatorState;
+import de.tudarmstadt.ukp.clarin.webanno.api.annotation.exception.ValidationException;
+import de.tudarmstadt.ukp.clarin.webanno.api.annotation.paging.NoPagingStrategy;
 import de.tudarmstadt.ukp.clarin.webanno.api.annotation.preferences.UserPreferencesService;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
@@ -67,16 +69,28 @@ import de.tudarmstadt.ukp.clarin.webanno.model.ValidationMode;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
 import de.tudarmstadt.ukp.clarin.webanno.support.logging.LogMessage;
+import de.tudarmstadt.ukp.clarin.webanno.support.uima.ICasUtil;
 import de.tudarmstadt.ukp.clarin.webanno.support.wicket.DecoratedObject;
-import de.tudarmstadt.ukp.clarin.webanno.support.wicketstuff.UrlParametersReceivingBehavior;
 import de.tudarmstadt.ukp.clarin.webanno.ui.core.page.ProjectPageBase;
+import de.tudarmstadt.ukp.inception.editor.action.AnnotationActionHandler;
+import de.tudarmstadt.ukp.inception.preferences.Key;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
+import de.tudarmstadt.ukp.inception.rendering.vmodel.VID;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
+import de.tudarmstadt.ukp.inception.schema.adapter.AnnotationException;
+import de.tudarmstadt.ukp.inception.schema.adapter.TypeAdapter;
+import de.tudarmstadt.ukp.inception.schema.validation.ValidationUtils;
 
 public abstract class AnnotationPageBase
     extends ProjectPageBase
 {
     private static final long serialVersionUID = -1133219266479577443L;
 
+    public static final Key<AnnotationEditorState> KEY_EDITOR_STATE = new Key<>(
+            AnnotationEditorState.class, "annotation/editor");
+
     public static final String PAGE_PARAM_DOCUMENT = "d";
+    public static final String PAGE_PARAM_USER = "u";
     public static final String PAGE_PARAM_FOCUS = "f";
 
     private @SpringBean AnnotationSchemaService annotationService;
@@ -90,30 +104,27 @@ public abstract class AnnotationPageBase
     protected AnnotationPageBase(PageParameters aParameters)
     {
         super(aParameters);
-    }
-
-    @Override
-    protected void onInitialize()
-    {
-        super.onInitialize();
 
         StringValue documentParameter = getPageParameters().get(PAGE_PARAM_DOCUMENT);
+        StringValue userParameter = getPageParameters().get(PAGE_PARAM_USER);
 
+        // If the page was accessed using an URL form ending in a document ID, let's move
+        // the document ID into the fragment and redirect to the form without the document ID.
+        // This ensures that any links on the page do not carry the document ID, so that we can
+        // happily switch between documents using AJAX without having to worry about links with
+        // a document ID potentially sending us back to a specific document.
         if (!documentParameter.isEmpty()) {
-            add(new Behavior()
-            {
-                private static final long serialVersionUID = 3142725677020364341L;
-
-                @Override
-                public void renderHead(Component aComponent, IHeaderResponse aResponse)
-                {
-                    aResponse.render(OnLoadHeaderItem
-                            .forScript("try{history.replaceState({}, '', './')}catch(e){}"));
-                    aResponse.render(OnLoadHeaderItem.forScript(String.format(
-                            "try{if(window.UrlUtil){window.UrlUtil.putFragmentParameter('%s','%s');}}catch(e){}",
-                            PAGE_PARAM_DOCUMENT, documentParameter.toString())));
-                }
-            });
+            RequestCycle requestCycle = getRequestCycle();
+            Url clientUrl = requestCycle.getRequest().getClientUrl();
+            clientUrl.resolveRelative(Url.parse("./"));
+            List<String> fragmentParams = new ArrayList<>();
+            fragmentParams.add(format("%s=%s", PAGE_PARAM_DOCUMENT, documentParameter.toString()));
+            if (!userParameter.isEmpty()) {
+                fragmentParams.add(format("%s=%s", PAGE_PARAM_USER, userParameter.toString()));
+            }
+            clientUrl.setFragment("!" + fragmentParams.stream().collect(joining("&")));
+            String url = requestCycle.getUrlRenderer().renderRelativeUrl(clientUrl);
+            throw new RedirectToUrlException(url.toString());
         }
     }
 
@@ -176,6 +187,7 @@ public abstract class AnnotationPageBase
             {
                 StringValue document = aRequestParameters.getParameterValue(PAGE_PARAM_DOCUMENT);
                 StringValue focus = aRequestParameters.getParameterValue(PAGE_PARAM_FOCUS);
+                StringValue user = aRequestParameters.getParameterValue(PAGE_PARAM_USER);
 
                 // nothing changed, do not check for project, because inception always opens
                 // on a project
@@ -184,18 +196,19 @@ public abstract class AnnotationPageBase
                 }
 
                 SourceDocument previousDoc = getModelObject().getDocument();
-                handleParameters(document, focus, false);
+                User aPreviousUser = getModelObject().getUser();
+                handleParameters(document, focus, user);
 
-                updateDocumentView(aTarget, previousDoc, focus);
+                updateDocumentView(aTarget, previousDoc, aPreviousUser, focus);
             }
         };
     }
 
     protected abstract void handleParameters(StringValue aDocumentParameter,
-            StringValue aFocusParameter, boolean aLockIfPreset);
+            StringValue aFocusParameter, StringValue aUser);
 
     protected abstract void updateDocumentView(AjaxRequestTarget aTarget,
-            SourceDocument aPreviousDocument, StringValue aFocusParameter);
+            SourceDocument aPreviousDocument, User aPreviousUser, StringValue aFocusParameter);
 
     protected void updateUrlFragment(AjaxRequestTarget aTarget)
     {
@@ -210,22 +223,45 @@ public abstract class AnnotationPageBase
     /**
      * Show the specified document.
      * 
+     * @param aTarget
+     *            the AJAX request target
+     * @param aDocument
+     *            the document to open
      * @return whether the document had to be switched or not.
      */
     public boolean actionShowSelectedDocument(AjaxRequestTarget aTarget, SourceDocument aDocument)
     {
         if (!Objects.equals(aDocument.getId(), getModelObject().getDocument().getId())) {
-            getModelObject().setDocument(aDocument, getListOfDocs());
+            List<SourceDocument> docs = getListOfDocs();
+            if (!docs.contains(aDocument)) {
+                error("The document [" + aDocument.getName() + "] is not accessible");
+                if (aTarget != null) {
+                    aTarget.addChildren(getPage(), IFeedback.class);
+                }
+                return false;
+            }
+
+            getModelObject().setDocument(aDocument, docs);
             actionLoadDocument(aTarget);
             return true;
         }
-        else {
-            return false;
-        }
+
+        return false;
     }
 
     /**
      * Show the next document if it exists, starting in a certain begin offset
+     * 
+     * @param aTarget
+     *            the AJAX request target
+     * @param aDocument
+     *            the document to open
+     * @param aBegin
+     *            the position in the document to scroll to
+     * @param aEnd
+     *            the position in the document to scroll to
+     * @throws IOException
+     *             if there was a problem retrieving the CAS
      */
     public void actionShowSelectedDocument(AjaxRequestTarget aTarget, SourceDocument aDocument,
             int aBegin, int aEnd)
@@ -235,13 +271,11 @@ public abstract class AnnotationPageBase
 
         AnnotatorState state = getModelObject();
 
-        // If the document was not switched and the requested offset is already visible on screen,
-        // then there is no need to change the screen contents
-        if (switched || !(state.getWindowBeginOffset() <= aBegin
-                && aEnd <= state.getWindowEndOffset())) {
-            CAS cas = getEditorCas();
-            state.setFirstVisibleUnit(selectSentenceCovering(cas, aBegin));
-            state.setFocusUnitIndex(getSentenceNumber(cas, aBegin));
+        CAS cas = getEditorCas();
+        state.getPagingStrategy().moveToOffset(state, cas, aBegin, CENTERED);
+
+        if (!switched && state.getPagingStrategy() instanceof NoPagingStrategy) {
+            return;
         }
 
         actionRefreshDocument(aTarget);
@@ -249,6 +283,11 @@ public abstract class AnnotationPageBase
 
     protected void handleException(AjaxRequestTarget aTarget, Exception aException)
     {
+        if (aException instanceof ReplaceHandlerException) {
+            // Let Wicket redirects still work
+            throw (ReplaceHandlerException) aException;
+        }
+
         LoggerFactory.getLogger(getClass()).error("Error: " + aException.getMessage(), aException);
         error("Error: " + aException.getMessage());
         if (aTarget != null) {
@@ -260,11 +299,16 @@ public abstract class AnnotationPageBase
 
     public abstract CAS getEditorCas() throws IOException;
 
+    public abstract AnnotationActionHandler getAnnotationActionHandler();
+
     public abstract void writeEditorCas(CAS aCas) throws IOException, AnnotationException;
 
     /**
      * Open a document or to a different document. This method should be used only the first time
      * that a document is accessed. It reset the annotator state and upgrades the CAS.
+     * 
+     * @param aTarget
+     *            the AJAX request target
      */
     public abstract void actionLoadDocument(AjaxRequestTarget aTarget);
 
@@ -273,6 +317,9 @@ public abstract class AnnotationPageBase
      * 
      * This method should be used while the editing process is ongoing. It does not upgrade the CAS
      * and it does not reset the annotator state.
+     * 
+     * @param aTarget
+     *            the AJAX request target
      */
     public abstract void actionRefreshDocument(AjaxRequestTarget aTarget);
 
@@ -283,9 +330,8 @@ public abstract class AnnotationPageBase
      */
     protected void validateRequiredFeatures(AjaxRequestTarget aTarget, CAS aCas,
             TypeAdapter aAdapter)
+        throws ValidationException, IOException, AnnotationException
     {
-        AnnotatorState state = getModelObject();
-
         CAS editorCas = aCas;
         AnnotationLayer layer = aAdapter.getLayer();
         List<AnnotationFeature> features = annotationService.listAnnotationFeature(layer);
@@ -298,32 +344,28 @@ public abstract class AnnotationPageBase
         // Check each feature structure of this layer
         Type layerType = aAdapter.getAnnotationType(editorCas);
         Type annotationFsType = editorCas.getAnnotationType();
-        for (FeatureStructure fs : editorCas.select(layerType)) {
-            for (AnnotationFeature f : features) {
-                if (WebAnnoCasUtil.isRequiredFeatureMissing(f, fs)) {
-                    // If it is an annotation, then we jump to it if it has required empty features
-                    if (editorCas.getTypeSystem().subsumes(annotationFsType, layerType)) {
-                        // Find the sentence that contains the annotation with the missing
-                        // required feature value
-                        AnnotationFS s = WebAnnoCasUtil.selectSentenceCovering(aCas,
-                                ((AnnotationFS) fs).getBegin());
-                        // Put this sentence into the focus
-                        state.setFirstVisibleUnit(s);
-                        actionRefreshDocument(aTarget);
-                    }
+        try (SelectFSs<TOP> fses = editorCas.select(layerType)) {
+            for (FeatureStructure fs : fses) {
+                for (AnnotationFeature f : features) {
+                    if (ValidationUtils.isRequiredFeatureMissing(f, fs)) {
+                        // If it is an annotation, then we jump to it if it has required empty
+                        // features
+                        if (editorCas.getTypeSystem().subsumes(annotationFsType, layerType)) {
+                            getAnnotationActionHandler().actionSelectAndJump(aTarget, new VID(fs));
+                        }
 
-                    // Inform the user
-                    throw new IllegalStateException(
-                            "Document cannot be marked as finished. Annotation with ID ["
-                                    + WebAnnoCasUtil.getAddr(fs) + "] on layer ["
-                                    + layer.getUiName() + "] is missing value for feature ["
-                                    + f.getUiName() + "].");
+                        // Inform the user
+                        throw new ValidationException("Annotation with ID [" + ICasUtil.getAddr(fs)
+                                + "] on layer [" + layer.getUiName()
+                                + "] is missing value for feature [" + f.getUiName() + "].");
+                    }
                 }
             }
         }
     }
 
     public void actionValidateDocument(AjaxRequestTarget aTarget, CAS aCas)
+        throws ValidationException, IOException, AnnotationException
     {
         AnnotatorState state = getModelObject();
         for (AnnotationLayer layer : annotationService.listAnnotationLayer(state.getProject())) {
@@ -347,17 +389,12 @@ public abstract class AnnotationPageBase
                 LogMessage message = messages.get(0).getLeft();
                 AnnotationFS fs = messages.get(0).getRight();
 
-                // Find the sentence that contains the annotation with the missing
-                // required feature value and put this sentence into the focus
-                AnnotationFS s = WebAnnoCasUtil.selectSentenceCovering(aCas, fs.getBegin());
-                state.setFirstVisibleUnit(s);
-                actionRefreshDocument(aTarget);
+                getAnnotationActionHandler().actionSelectAndJump(aTarget, new VID(fs));
 
                 // Inform the user
-                throw new IllegalStateException(
-                        "Document cannot be marked as finished. Annotation with ID ["
-                                + WebAnnoCasUtil.getAddr(fs) + "] on layer [" + layer.getUiName()
-                                + "] is invalid: " + message.getMessage());
+                throw new ValidationException(
+                        "Annotation with ID [" + ICasUtil.getAddr(fs) + "] on layer ["
+                                + layer.getUiName() + "] is invalid: " + message.getMessage());
             }
         }
     }
@@ -370,8 +407,7 @@ public abstract class AnnotationPageBase
     protected void loadPreferences() throws BeansException, IOException
     {
         AnnotatorState state = getModelObject();
-        PreferencesUtil.loadPreferences(userPreferenceService, annotationService, state,
-                userRepository.getCurrentUsername());
+        userPreferenceService.loadPreferences(state, userRepository.getCurrentUsername());
     }
 
     public void ensureIsEditable() throws NotEditableException
@@ -408,22 +444,13 @@ public abstract class AnnotationPageBase
 
     public boolean isEditable()
     {
-        AnnotatorState state = getModelObject();
-
-        if (state.getDocument() == null) {
+        try {
+            ensureIsEditable();
+            return true;
+        }
+        catch (NotEditableException e) {
             return false;
         }
-        // If curating (check mode for curation page and user for curation sidebar),
-        // then it is editable unless the curation is finished
-        if (state.getMode().equals(CURATION)
-                || state.getUser().getUsername().equals(CURATION_USER)) {
-            return !CURATION_FINISHED.equals(state.getDocument().getState());
-        }
-
-        // If annotating normally, then it is editable unless marked as finished and unless
-        // viewing another users annotations
-        return !getModelObject().isUserViewingOthersWork(userRepository.getCurrentUsername())
-                && !isAnnotationFinished();
     }
 
     public boolean isAnnotationFinished()
@@ -445,9 +472,6 @@ public abstract class AnnotationPageBase
     }
 
     public abstract IModel<List<DecoratedObject<Project>>> getAllowedProjects();
-
-    public abstract List<DecoratedObject<SourceDocument>> listAccessibleDocuments(Project aProject,
-            User aUser);
 
     /**
      * This is a special AJAX target response listener which implements hashCode and equals. It uses
@@ -484,9 +508,13 @@ public abstract class AnnotationPageBase
                 return;
             }
 
+            urlFragmentLastDocumentId = currentDocumentId;
+            urlFragmentLastFocusUnitIndex = currentFocusUnitIndex;
+
             UrlFragment fragment = new UrlFragment(aTarget);
 
             fragment.putParameter(PAGE_PARAM_DOCUMENT, currentDocumentId);
+
             if (state.getFocusUnitIndex() > 0) {
                 fragment.putParameter(PAGE_PARAM_FOCUS, currentFocusUnitIndex);
             }
@@ -494,8 +522,12 @@ public abstract class AnnotationPageBase
                 fragment.removeParameter(PAGE_PARAM_FOCUS);
             }
 
-            urlFragmentLastDocumentId = currentDocumentId;
-            urlFragmentLastFocusUnitIndex = currentFocusUnitIndex;
+            if (userRepository.getCurrentUsername().equals(state.getUser().getUsername())) {
+                fragment.removeParameter(PAGE_PARAM_USER);
+            }
+            else {
+                fragment.putParameter(PAGE_PARAM_USER, state.getUser().getUsername());
+            }
 
             // If we do not manually set editedFragment to false, then changing the URL
             // manually or using the back/forward buttons in the browser only works every

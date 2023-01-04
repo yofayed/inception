@@ -20,17 +20,29 @@
   <parent>
     <groupId>de.tudarmstadt.ukp.inception.app</groupId>
     <artifactId>inception-app</artifactId>
-    <version>0.20.0-SNAPSHOT</version>
+    <version>27.0-SNAPSHOT</version>
   </parent>
-  <name>INCEpTION - Editor - PDF</name>
+  <name>INCEpTION - Editor - PDF (pdfbox ${pdfbox.version})</name>
   <artifactId>inception-pdf-editor</artifactId>
   <properties>
-    <frontend.install.path>${session.executionRootDirectory}/cache/maven-frontend-plugin</frontend.install.path>
+    <pdfbox.version>2.0.26</pdfbox.version>
   </properties>
   <dependencies>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-api-render</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-api-schema</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-api-editor</artifactId>
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
@@ -44,6 +56,18 @@
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-model</artifactId>
     </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-support</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-diam</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-external-editor</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.apache.uima</groupId>
@@ -52,11 +76,6 @@
     <dependency>
       <groupId>org.apache.uima</groupId>
       <artifactId>uimafit-core</artifactId>
-    </dependency>
-    
-    <dependency>
-      <groupId>commons-io</groupId>
-      <artifactId>commons-io</artifactId>
     </dependency>
 
     <dependency>
@@ -67,10 +86,6 @@
       <groupId>org.dkpro.core</groupId>
       <artifactId>dkpro-core-api-resources-asl</artifactId>
     </dependency>
-    <dependency>
-      <groupId>org.dkpro.core</groupId>
-      <artifactId>dkpro-core-api-segmentation-asl</artifactId>
-    </dependency>
 
     <dependency>
       <groupId>org.apache.commons</groupId>
@@ -79,26 +94,21 @@
     <dependency>
       <groupId>org.apache.pdfbox</groupId>
       <artifactId>pdfbox</artifactId>
-      <version>2.0.15</version>
+      <version>${pdfbox.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.pdfbox</groupId>
       <artifactId>fontbox</artifactId>
-      <version>2.0.15</version>
+      <version>${pdfbox.version}</version>
     </dependency>
 
-
-      <dependency>
+    <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-context</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-webmvc</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -137,25 +147,14 @@
       <groupId>it.unimi.dsi</groupId>
       <artifactId>fastutil</artifactId>
     </dependency>
-
-    <!-- Testing -->
-
+    
     <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.assertj</groupId>
-      <artifactId>assertj-core</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.mockito</groupId>
-      <artifactId>mockito-core</artifactId>
-      <scope>test</scope>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
+      <scope>provided</scope>
     </dependency>
 
+    <!-- DEPENDENCIES FOR TESTING -->
     <dependency>
       <groupId>org.dkpro.core</groupId>
       <artifactId>dkpro-core-io-tcf-asl</artifactId>
@@ -166,93 +165,19 @@
       <artifactId>dkpro-core-api-lexmorph-asl</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.dkpro.core</groupId>
+      <artifactId>dkpro-core-api-segmentation-asl</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-schema</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
+
   <build>
-    <plugins>
-      <plugin>
-        <artifactId>maven-resources-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>copy-pdfanno-to-target</id>
-            <phase>generate-resources</phase>
-            <goals>
-              <goal>copy-resources</goal>
-            </goals>
-            <configuration>
-              <outputDirectory>target/js/pdfanno</outputDirectory>
-              <resources>
-                <resource>
-                  <directory>src/main/js/pdfanno</directory>
-                </resource>
-              </resources>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>build-helper-maven-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>add-pdfanno-resources</id>
-            <phase>generate-resources</phase>
-            <goals>
-              <goal>add-resource</goal>
-            </goals>
-            <configuration>
-              <resources>
-                <resource>
-                  <directory>target/js/pdfanno/dist/pdfanno</directory>
-                  <targetPath>pdfanno</targetPath>
-                </resource>
-              </resources>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>com.github.eirslett</groupId>
-        <artifactId>frontend-maven-plugin</artifactId>
-        <version>1.6</version>
-          <configuration>
-            <workingDirectory>target/js/pdfanno/</workingDirectory>
-            <installDirectory>${frontend.install.path}</installDirectory>
-          </configuration>
-        <executions>
-          <execution>
-            <id>install node and npm</id>
-            <goals>
-              <goal>install-node-and-npm</goal>
-            </goals>
-            <phase>generate-resources</phase>
-            <configuration>
-              <nodeVersion>v11.0.0</nodeVersion>
-              <npmVersion>6.4.1</npmVersion>
-            </configuration>
-          </execution>
-          <execution>
-            <id>npm install</id>
-            <goals>
-              <goal>npm</goal>
-            </goals>
-            <phase>generate-resources</phase>
-            <configuration>
-              <arguments>install</arguments>
-            </configuration>
-          </execution>
-          <execution>
-            <id>npm run</id>
-            <goals>
-              <goal>npm</goal>
-            </goals>
-            <phase>generate-resources</phase>
-            <configuration>
-              <arguments>run front:publish</arguments>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-    </plugins>
     <pluginManagement>
       <plugins>
         <plugin>
@@ -263,9 +188,10 @@
               <id>default</id>
               <configuration>
                 <excludes combine.children="append">
-                  <!-- These upstream files do not contain license headers -->
-                  <exclude>src/main/js/pdfanno/**/*</exclude>
-                  <exclude>cache/**/*</exclude>
+                  <exclude>src/main/java/de/tudarmstadt/ukp/inception/pdfeditor/pdfextract/PDFExtractor.java</exclude>
+                  <exclude>src/main/java/de/tudarmstadt/ukp/inception/pdfeditor/pdfextract/ImageExtractor.java</exclude>
+                  <exclude>src/main/ts/**/*</exclude>
+                  <exclude>src/main/ts/**/*</exclude>
                 </excludes>
               </configuration>
             </execution>
@@ -273,18 +199,33 @@
         </plugin>
       </plugins>
     </pluginManagement>
+    <plugins>
+      <plugin>
+        <groupId>com.github.eirslett</groupId>
+        <artifactId>frontend-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>npm link dependencies</id>
+            <goals>
+              <goal>npm</goal>
+            </goals>
+            <phase>${ts-link-dependency-phase}</phase>
+            <configuration>
+              <arguments>link @inception-project/inception-js-api @inception-project/inception-diam</arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>npm build</id>
+            <goals>
+              <goal>npm</goal>
+            </goals>
+            <phase>${ts-build-phase}</phase>
+            <configuration>
+              <arguments>run build</arguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
   </build>
-  <profiles>
-    <profile>
-      <id>jenkins</id>
-      <activation>
-        <property>
-          <name>JENKINS_HOME</name>
-        </property>
-      </activation>
-      <properties>
-        <frontend.install.path>${WORKSPACE}/cache/maven-frontend-plugin</frontend.install.path>
-      </properties>
-    </profile>
-  </profiles>
 </project>

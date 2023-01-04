@@ -17,31 +17,51 @@
  */
 package de.tudarmstadt.ukp.inception.ui.core.dashboard.config;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
+import org.springframework.context.annotation.Lazy;
 
+import de.tudarmstadt.ukp.inception.ui.core.dashboard.dashlet.ProjectDashboardDashletExtension;
+import de.tudarmstadt.ukp.inception.ui.core.dashboard.dashlet.ProjectDashboardDashletExtensionPoint;
+import de.tudarmstadt.ukp.inception.ui.core.dashboard.dashlet.ProjectDashboardDashletExtensionPointImpl;
 import de.tudarmstadt.ukp.inception.ui.core.dashboard.settings.ProjectSettingsDashboardMenuItem;
-import de.tudarmstadt.ukp.inception.ui.core.dashboard.settings.ProjectSettingsPageMenuItem;
+import de.tudarmstadt.ukp.inception.ui.core.dashboard.settings.export.LegacyProjectExportMenuItem;
+import de.tudarmstadt.ukp.inception.ui.core.dashboard.settings.export.ProjectExportMenuItem;
 
+@ConditionalOnWebApplication
 @Configuration
 public class DashboardAutoConfiguration
 {
     @Bean
-    @Order(8000)
-    @ConditionalOnProperty(prefix = "dashboard", name = "new-settings", matchIfMissing = true)
     public ProjectSettingsDashboardMenuItem projectSettingsDashboardMenuItem()
     {
         return new ProjectSettingsDashboardMenuItem();
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "dashboard", name = "new-settings", havingValue = "false", matchIfMissing = false)
-    @Order(8000)
-    @Deprecated
-    public ProjectSettingsPageMenuItem projectSettingsPageMenuItem()
+    @ConditionalOnExpression("${websocket.enabled:true} and !${dashboard.legacy-export.enabled:false}")
+    public ProjectExportMenuItem projectExportMenuItem()
     {
-        return new ProjectSettingsPageMenuItem();
+        return new ProjectExportMenuItem();
+    }
+
+    @Bean
+    @ConditionalOnExpression("!${websocket.enabled:true} or ${dashboard.legacy-export.enabled:false}")
+    @Deprecated
+    public LegacyProjectExportMenuItem legacyProjectExportMenuItem()
+    {
+        return new LegacyProjectExportMenuItem();
+    }
+
+    @Bean
+    ProjectDashboardDashletExtensionPoint projectDashboardDashletExtensionPoint(
+            @Lazy @Autowired(required = false) List<ProjectDashboardDashletExtension> aExtensions)
+    {
+        return new ProjectDashboardDashletExtensionPointImpl(aExtensions);
     }
 }

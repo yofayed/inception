@@ -23,6 +23,7 @@ import org.apache.wicket.feedback.FeedbackMessage;
 import org.apache.wicket.feedback.IFeedbackMessageFilter;
 import org.apache.wicket.markup.head.IHeaderResponse;
 import org.apache.wicket.markup.head.JavaScriptHeaderItem;
+import org.apache.wicket.markup.head.OnDomReadyHeaderItem;
 import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.panel.FeedbackPanel;
 
@@ -33,6 +34,8 @@ public class BootstrapFeedbackPanel
     extends FeedbackPanel
 {
     private static final long serialVersionUID = 5171764027460264375L;
+
+    private WebMarkupContainer closeAll;
 
     public BootstrapFeedbackPanel(String id)
     {
@@ -45,10 +48,12 @@ public class BootstrapFeedbackPanel
 
         WebMarkupContainer messagesContainer = (WebMarkupContainer) get("feedbackul");
 
-        WebMarkupContainer closeAll = new WebMarkupContainer("closeAll");
+        closeAll = new WebMarkupContainer("closeAll");
+        closeAll.setOutputMarkupId(true);
         // Show the bulk-dismiss option if there are at least two sticky messages t
         closeAll.add(visibleWhen(() -> getCurrentMessages().stream()
                 .filter(FeedbackMessage::isWarning).limit(2).count() > 1));
+
         messagesContainer.add(closeAll);
     }
 
@@ -59,12 +64,20 @@ public class BootstrapFeedbackPanel
 
         aResponse.render(
                 JavaScriptHeaderItem.forReference(BootstrapFeedbackPanelJavascriptReference.get()));
+
+        aResponse.render(OnDomReadyHeaderItem.forScript("bootstrapFeedbackPanelFade();"));
+
+        if (closeAll.isVisible()) {
+            aResponse.render(OnDomReadyHeaderItem.forScript("document.getElementById('"
+                    + closeAll.getMarkupId()
+                    + "')?.addEventListener('click', e => bootstrapFeedbackPanelCloseAll())"));
+        }
     }
 
     @Override
     protected String getCSSClass(FeedbackMessage message)
     {
-        String cssClass = "alert alert-dismissable";
+        String cssClass = "alert alert-dismissible";
         switch (message.getLevel()) {
         case FeedbackMessage.ERROR:
         case FeedbackMessage.FATAL:
@@ -84,5 +97,4 @@ public class BootstrapFeedbackPanel
         }
         return cssClass;
     }
-
 }

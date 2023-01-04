@@ -110,8 +110,6 @@ have have been included in the files are ignored on import.
 [[sect_projects_layers_properties]]
 == Properties 
 
-image::layer1.jpg[align="center"]
-
 .Properites
 [cols="1,2", options="header"]
 |====
@@ -163,7 +161,7 @@ The layer type defines the structure of the layer. Three different types are sup
 | Example
 
 | Span
-| Continous segment of text delimited by a start and end character offset. The example shows two spans.
+| Continuous segment of text delimited by a start and end character offset. The example shows two spans.
 | image:project_layer_type_span.png[]
 
 | Relation
@@ -281,18 +279,52 @@ _(Span layers)_
 | Whether the annotation detail editor should carry values of this feature
 over when creating a new annotation of the same type. This can be useful when creating many annotations
 of the same type in a row.
+
+| Curatable
+| Whether the feature is considered when comparing whether annotations are equal and can be
+pre-merged during curation. This flag is enabled by default. When it is disabled, two annotations
+will be treated as the same for the purpose of curation, even if the feature value is different.
+The feature value will also not be copied to a pre-merged or manually merged annotation. Disabling
+this flag on all features of a layer will cause annotations to be only compared by their positions.
 |====
 
 
 === String features
 
-A string feature uses a simple input field to enter text. When enabling *multiple rows*, then a
-multi-line text area is used instead - in this case, no tagset can be assigned to the feature.
+A string feature either holds a short tag (optionally from a restricted tag set) or a note (i.e.
+a multi-line text).
 
-If a tagset is assigned, then a combo box or auto-complete input field will be used - depending
-on the number of tags in the tagset. The instance administrator can globally configure the threshold
-for switching from a combo box to an auto-complete via the 
-`annotation.feature-support.string.autoCompleteThreshold` in the `settings.properties` file.
+When no tagset is associated with the string feature, it is displayed to the user simply as a
+single line input field. You can enable the *multiple rows* option to turn it into a multi-line
+text area. If you do so, additional options appear allowing to configure the size of the text area
+which can be fixed or dynamic (i.e. automatically adjust to the text area content).
+
+Optionally, a <<sect_projects_tagsets,tagset>> can be associated with a string feature (unless you enabled multiple rows). If string feature is associated with a tagset, there are different options
+as to which type of *editor type* (i.e. input field) is displayed to the user.
+
+.Editor types for string features with tagsets
+[cols="1v,2", options="header"]
+|====
+| Editor type | Description
+
+| Auto
+| An editor is chosen automatically depending on the size of the tagset and whether annotators can add to it.
+
+| Radio group
+| Each tag is shown as a button. Only one button can be active at a time. Best for quick access to small tagsets. Does not allow annotators to add new tags (yet).
+
+| Combo box
+| A text field with auto-completion and button that opens a drop-down list showing all possible tags and their descriptions. Best for mid-sized tagsets.
+
+| Autocomplete
+| A text field with auto-completion. A dropdown opens when the user starts typing into the field and it displays matching tags. There is no way to browse all available tags. Best for large tagsets.
+
+|====
+
+The tagset size thresholds used by the *Auto* mode to determine which editor to choose can be
+globally configured by an administrator via the <<admin_guide.adoc#sect_settings_annotation,`settings.properties`>>
+file. Because the radio group editor does not support adding new tags (yet), it chosen automatically
+only if the associated tagset does not allow annotators to add new tags.
 
 .String feature properties
 [cols="1v,2", options="header"]
@@ -301,6 +333,9 @@ for switching from a combo box to an auto-complete via the
 
 | Tagset
 | The tagset controlling the possible values for a string feature.
+
+| Editor type
+| The type of input field shown to the annotators.
 
 | Multiple Rows
 | If enabled the textfield will be replaced by a textarea which expands on focus. This also enables options to set the size of the textarea and disables tagsets.

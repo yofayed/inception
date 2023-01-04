@@ -24,13 +24,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.builder.EqualsBuilder;
-import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.uima.cas.CAS;
 import org.apache.uima.resource.metadata.TypeDescription;
 import org.apache.uima.resource.metadata.TypeSystemDescription;
@@ -41,25 +37,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.LoadingCache;
-
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.action.AnnotationActionHandler;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupport;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureType;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.editor.FeatureEditor;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotatorState;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.FeatureState;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.rendering.model.VLazyDetailQuery;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.rendering.model.VLazyDetailResult;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.support.JSONUtil;
+import de.tudarmstadt.ukp.inception.editor.action.AnnotationActionHandler;
 import de.tudarmstadt.ukp.inception.kb.ConceptFeatureTraits;
-import de.tudarmstadt.ukp.inception.kb.KnowledgeBaseService;
-import de.tudarmstadt.ukp.inception.kb.graph.KBErrorHandle;
 import de.tudarmstadt.ukp.inception.kb.graph.KBHandle;
-import de.tudarmstadt.ukp.inception.kb.graph.KBObject;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.FeatureState;
+import de.tudarmstadt.ukp.inception.rendering.vmodel.VID;
+import de.tudarmstadt.ukp.inception.rendering.vmodel.VLazyDetailQuery;
+import de.tudarmstadt.ukp.inception.rendering.vmodel.VLazyDetailResult;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureEditor;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupport;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureType;
 import de.tudarmstadt.ukp.inception.ui.kb.config.KnowledgeBaseServiceUIAutoConfiguration;
 
 /**
@@ -79,18 +70,14 @@ public class ConceptFeatureSupport
 
     private static final Logger LOG = LoggerFactory.getLogger(ConceptFeatureSupport.class);
 
-    private final KnowledgeBaseService kbService;
-
-    private LoadingCache<Key, KBHandle> labelCache = Caffeine.newBuilder().maximumSize(10_000)
-            .expireAfterWrite(10, TimeUnit.MINUTES).refreshAfterWrite(1, TimeUnit.MINUTES)
-            .build(key -> loadLabelValue(key));
+    private final ConceptLabelCache labelCache;
 
     private String featureSupportId;
 
     @Autowired
-    public ConceptFeatureSupport(KnowledgeBaseService aKbService)
+    public ConceptFeatureSupport(ConceptLabelCache aLabelCache)
     {
-        kbService = aKbService;
+        labelCache = aLabelCache;
     }
 
     @Override
@@ -108,13 +95,12 @@ public class ConceptFeatureSupport
     @Override
     public Optional<FeatureType> getFeatureType(AnnotationFeature aFeature)
     {
-        if (aFeature.getType().startsWith(PREFIX)) {
-            return Optional.of(new FeatureType(aFeature.getType(),
-                    aFeature.getType().substring(PREFIX.length()), featureSupportId));
-        }
-        else {
+        if (!aFeature.getType().startsWith(PREFIX)) {
             return Optional.empty();
         }
+
+        return Optional.of(new FeatureType(aFeature.getType(),
+                aFeature.getType().substring(PREFIX.length()), featureSupportId));
     }
 
     @Override
@@ -141,83 +127,52 @@ public class ConceptFeatureSupport
     @Override
     public String renderFeatureValue(AnnotationFeature aFeature, String aIdentifier)
     {
-        String renderValue = null;
-        if (aIdentifier != null) {
-            return labelCache.get(new Key(aFeature, aIdentifier)).getUiLabel();
+        if (aIdentifier == null) {
+            return null;
         }
-        return renderValue;
+
+        ConceptFeatureTraits traits = readTraits(aFeature);
+        return labelCache.get(aFeature, traits.getRepositoryId(), aIdentifier).getUiLabel();
     }
 
-    private KBHandle loadLabelValue(Key aKey)
-    {
-        try {
-            ConceptFeatureTraits t = readTraits(aKey.getAnnotationFeature());
-
-            // Use the concept from a particular knowledge base
-            Optional<KBObject> kbObject;
-            if (t.getRepositoryId() != null) {
-                kbObject = kbService
-                        .getKnowledgeBaseById(aKey.getAnnotationFeature().getProject(),
-                                t.getRepositoryId())
-                        .flatMap(kb -> kbService.readItem(kb, aKey.getLabel()));
-            }
-
-            // Use the concept from any knowledge base (leave KB unselected)
-            else {
-                kbObject = kbService.readItem(aKey.getAnnotationFeature().getProject(),
-                        aKey.getLabel());
-
-            }
-            return kbObject.map(KBObject::toKBHandle).orElseThrow(NoSuchElementException::new);
-        }
-        catch (NoSuchElementException e) {
-            LOG.error("No label for feature value [{}]", aKey.getLabel());
-            return new KBErrorHandle("NO LABEL (" + aKey.getLabel() + ")", e);
-        }
-        catch (Exception e) {
-            LOG.error("Unable to obtain label value for feature value [{}]", aKey.getLabel(), e);
-            return new KBErrorHandle("ERROR (" + aKey.getLabel() + ")", e);
-        }
-    }
-
+    @SuppressWarnings("unchecked")
     @Override
     public String unwrapFeatureValue(AnnotationFeature aFeature, CAS aCAS, Object aValue)
     {
+        // When used in a recommendation context, we might get the concept identifier as a string
+        // value.
+        if (aValue == null || aValue instanceof String) {
+            return (String) aValue;
+        }
+
         // Normally, we get KBHandles back from the feature editors
         if (aValue instanceof KBHandle) {
             return ((KBHandle) aValue).getIdentifier();
         }
-        // When used in a recommendation context, we might get the concept identifier as a string
-        // value.
-        else if (aValue instanceof String || aValue == null) {
-            return (String) aValue;
-        }
-        else {
-            throw new IllegalArgumentException(
-                    "Unable to handle value [" + aValue + "] of type [" + aValue.getClass() + "]");
-        }
+
+        throw new IllegalArgumentException(
+                "Unable to handle value [" + aValue + "] of type [" + aValue.getClass() + "]");
     }
 
     @Override
     public KBHandle wrapFeatureValue(AnnotationFeature aFeature, CAS aCAS, Object aValue)
     {
+        if (aValue == null || aValue instanceof KBHandle) {
+            return (KBHandle) aValue;
+        }
+
         if (aValue instanceof String) {
             String identifier = (String) aValue;
             String label = renderFeatureValue(aFeature, identifier);
-            String description = labelCache.get(new Key(aFeature, identifier)).getDescription();
+            ConceptFeatureTraits traits = readTraits(aFeature);
+            String description = labelCache.get(aFeature, traits.getRepositoryId(), identifier)
+                    .getDescription();
 
             return new KBHandle(identifier, label, description);
         }
-        else if (aValue instanceof KBHandle) {
-            return (KBHandle) aValue;
-        }
-        else if (aValue == null) {
-            return null;
-        }
-        else {
-            throw new IllegalArgumentException(
-                    "Unable to handle value [" + aValue + "] of type [" + aValue.getClass() + "]");
-        }
+
+        throw new IllegalArgumentException(
+                "Unable to handle value [" + aValue + "] of type [" + aValue.getClass() + "]");
     }
 
     @Override
@@ -236,7 +191,7 @@ public class ConceptFeatureSupport
 
         switch (feature.getMultiValueMode()) {
         case NONE:
-            if (feature.getType().startsWith("kb:")) {
+            if (feature.getType().startsWith(PREFIX)) {
                 editor = new ConceptFeatureEditor(aId, aOwner, aFeatureStateModel, aStateModel,
                         aHandler);
             }
@@ -313,11 +268,13 @@ public class ConceptFeatureSupport
     }
 
     @Override
-    public List<VLazyDetailResult> renderLazyDetails(AnnotationFeature aFeature, String aQuery)
+    public List<VLazyDetailResult> renderLazyDetails(CAS aCas, AnnotationFeature aFeature,
+            VID aParamId, String aQuery)
     {
         List<VLazyDetailResult> result = new ArrayList<>();
 
-        KBHandle handle = labelCache.get(new Key(aFeature, aQuery));
+        ConceptFeatureTraits traits = readTraits(aFeature);
+        KBHandle handle = labelCache.get(aFeature, traits.getRepositoryId(), aQuery);
 
         result.add(new VLazyDetailResult("Label", handle.getUiLabel()));
 
@@ -333,45 +290,5 @@ public class ConceptFeatureSupport
     {
         ConceptFeatureTraits traits = readTraits(aFeature);
         return !traits.getKeyBindings().isEmpty();
-    }
-
-    private class Key
-    {
-        private final AnnotationFeature feature;
-        private final String label;
-
-        public Key(AnnotationFeature aFeature, String aLabel)
-        {
-            super();
-            feature = aFeature;
-            label = aLabel;
-        }
-
-        public String getLabel()
-        {
-            return label;
-        }
-
-        public AnnotationFeature getAnnotationFeature()
-        {
-            return feature;
-        }
-
-        @Override
-        public boolean equals(final Object other)
-        {
-            if (!(other instanceof Key)) {
-                return false;
-            }
-            Key castOther = (Key) other;
-            return new EqualsBuilder().append(feature, castOther.feature)
-                    .append(label, castOther.label).isEquals();
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return new HashCodeBuilder().append(feature).append(label).toHashCode();
-        }
     }
 }

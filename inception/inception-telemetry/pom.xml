@@ -20,7 +20,7 @@
   <parent>
     <groupId>de.tudarmstadt.ukp.inception.app</groupId>
     <artifactId>inception-app</artifactId>
-    <version>0.20.0-SNAPSHOT</version>
+    <version>27.0-SNAPSHOT</version>
   </parent>
   <artifactId>inception-telemetry</artifactId>
   <name>INCEpTION - Telemetry</name>
@@ -29,10 +29,6 @@
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-ui-core</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-api</artifactId>
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
@@ -50,6 +46,10 @@
     <dependency>
       <groupId>commons-io</groupId>
       <artifactId>commons-io</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
     </dependency>
 
     <dependency>
@@ -80,6 +80,10 @@
       <groupId>org.springframework.security</groupId>
       <artifactId>spring-security-web</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-autoconfigure</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.apache.wicket</groupId>
@@ -98,16 +102,12 @@
       <artifactId>wicketstuff-annotation</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.github.openjson</groupId>
-      <artifactId>openjson</artifactId>
+      <groupId>com.googlecode.wicket-jquery-ui</groupId>
+      <artifactId>wicket-kendo-ui</artifactId>
     </dependency>
     <dependency>
-      <groupId>de.agilecoders.wicket</groupId>
-      <artifactId>wicket-bootstrap-extensions</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.danekja</groupId>
-      <artifactId>jdk-serializable-functional</artifactId>
+      <groupId>com.googlecode.wicket-jquery-ui</groupId>
+      <artifactId>wicket-jquery-ui-core</artifactId>
     </dependency>
 
     <dependency>
@@ -119,17 +119,23 @@
       <groupId>javax.persistence</groupId>
       <artifactId>javax.persistence-api</artifactId>
     </dependency>
-    
-    <dependency>
-      <groupId>com.squareup.okhttp3</groupId>
-      <artifactId>okhttp</artifactId>
-      <version>4.0.1</version>
-    </dependency>
 
     <dependency>
-      <groupId>ch.rasc</groupId>
-      <artifactId>piwik-tracking</artifactId>
-      <version>1.0.3</version>
+      <groupId>org.piwik.java.tracking</groupId>
+      <artifactId>matomo-java-tracker</artifactId>
+      <version>1.6</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpclient</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpcore</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpasyncclient</artifactId>
     </dependency>
   </dependencies>
 </project>

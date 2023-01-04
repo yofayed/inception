@@ -59,15 +59,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wicketstuff.annotation.mount.MountPath;
 
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.select.BootstrapSelect;
 import de.tudarmstadt.ukp.clarin.webanno.agreement.measures.AgreementMeasure;
 import de.tudarmstadt.ukp.clarin.webanno.agreement.measures.AgreementMeasureSupport;
 import de.tudarmstadt.ukp.clarin.webanno.agreement.measures.AgreementMeasureSupportRegistry;
 import de.tudarmstadt.ukp.clarin.webanno.agreement.measures.DefaultAgreementTraits;
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
 import de.tudarmstadt.ukp.clarin.webanno.api.ProjectService;
-import de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst;
 import de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocument;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
@@ -75,11 +72,14 @@ import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
+import de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxButton;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxFormComponentUpdatingBehavior;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaChoiceRenderer;
 import de.tudarmstadt.ukp.clarin.webanno.ui.core.page.ProjectPageBase;
 import de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Token;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
+import de.tudarmstadt.ukp.inception.support.help.DocLink;
 
 @MountPath(NS_PROJECT + "/${" + PAGE_PARAM_PROJECT + "}/agreement")
 public class AgreementPage
@@ -142,13 +142,15 @@ public class AgreementPage
 
             setOutputMarkupPlaceholderTag(true);
 
+            add(new DocLink("agreementHelpLink", "sect_monitoring_agreement"));
+
             add(traitsContainer = new WebMarkupContainer(MID_TRAITS_CONTAINER));
             traitsContainer.setOutputMarkupPlaceholderTag(true);
             traitsContainer.add(new EmptyPanel(MID_TRAITS));
 
             add(new Label("name", getProject().getName()));
 
-            add(featureList = new BootstrapSelect<AnnotationFeature>("feature"));
+            add(featureList = new DropDownChoice<>("feature"));
             featureList.setOutputMarkupId(true);
             featureList.setChoices(LoadableDetachableModel.of(this::getEligibleFeatures));
             featureList.setChoiceRenderer(new LambdaChoiceRenderer<AnnotationFeature>(
@@ -160,11 +162,12 @@ public class AgreementPage
             runCalculationsButton.triggerAfterSubmit();
             add(runCalculationsButton);
 
-            add(measureDropDown = new BootstrapSelect<Pair<String, String>>("measure",
+            add(measureDropDown = new DropDownChoice<Pair<String, String>>("measure",
                     this::listMeasures)
             {
                 private static final long serialVersionUID = -2666048788050249581L;
 
+                @SuppressWarnings({ "rawtypes", "unchecked" })
                 @Override
                 protected void onModelChanged()
                 {
@@ -177,7 +180,7 @@ public class AgreementPage
                         AgreementMeasureSupport ams = agreementRegistry
                                 .getAgreementMeasureSupport(getModelObject().getKey());
                         newTraits = ams.createTraitsEditor(MID_TRAITS, featureList.getModel(),
-                                Model.of(ams.createTraits()));
+                                Model.of((DefaultAgreementTraits) ams.createTraits()));
                     }
                     else {
                         newTraits = new EmptyPanel(MID_TRAITS);

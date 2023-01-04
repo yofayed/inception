@@ -24,10 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.security.NoSuchAlgorithmException;
 import java.util.Random;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class MtasUtilsTest
 {
+    Random rnd = new Random();
+
     @Test
     public void bytesToCharsRoundtripFixed() throws NoSuchAlgorithmException
     {
@@ -43,7 +45,6 @@ public class MtasUtilsTest
     {
         byte[] input = new byte[65535];
 
-        Random rnd = new Random();
         rnd.nextBytes(input);
 
         byte[] output = charsToBytes(bytesToChars(input));

@@ -38,7 +38,6 @@ import java.util.zip.ZipFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.JsonEncoding;
 import com.fasterxml.jackson.core.JsonGenerator;
@@ -47,18 +46,24 @@ import com.fasterxml.jackson.core.util.MinimalPrettyPrinter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
-import de.tudarmstadt.ukp.clarin.webanno.api.dao.export.exporters.SourceDocumentExporter;
-import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectExportRequest;
+import de.tudarmstadt.ukp.clarin.webanno.api.export.FullProjectExportRequest;
 import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectExportTaskMonitor;
 import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectExporter;
 import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectImportRequest;
 import de.tudarmstadt.ukp.clarin.webanno.export.model.ExportedProject;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
+import de.tudarmstadt.ukp.inception.documents.exporters.SourceDocumentExporter;
 import de.tudarmstadt.ukp.inception.log.EventRepository;
+import de.tudarmstadt.ukp.inception.log.config.EventLoggingAutoConfiguration;
 import de.tudarmstadt.ukp.inception.log.model.LoggedEvent;
 
-@Component
+/**
+ * <p>
+ * This class is exposed as a Spring Component via
+ * {@link EventLoggingAutoConfiguration#loggedEventExporter}.
+ * </p>
+ */
 public class LoggedEventExporter
     implements ProjectExporter
 {
@@ -83,7 +88,7 @@ public class LoggedEventExporter
     }
 
     @Override
-    public void exportData(ProjectExportRequest aRequest, ProjectExportTaskMonitor aMonitor,
+    public void exportData(FullProjectExportRequest aRequest, ProjectExportTaskMonitor aMonitor,
             ExportedProject aExProject, File aFile)
         throws Exception
     {
@@ -108,6 +113,11 @@ public class LoggedEventExporter
 
             // Stream data
             eventRepository.forEachLoggedEvent(project, event -> {
+                // check if the export has been cancelled
+                if (Thread.interrupted()) {
+                    throw new InterruptedException();
+                }
+
                 String documentName = null;
                 // If the document ID is -1, then there is no document linked up to this event.
                 // In this case, we do not need to try resolving the IDs to a name.

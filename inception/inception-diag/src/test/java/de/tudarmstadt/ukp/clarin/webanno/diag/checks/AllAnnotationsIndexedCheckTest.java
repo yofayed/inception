@@ -17,8 +17,8 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.diag.checks;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,11 +30,12 @@ import org.apache.uima.cas.text.AnnotationFS;
 import org.apache.uima.resource.metadata.TypeDescription;
 import org.apache.uima.resource.metadata.TypeSystemDescription;
 import org.apache.uima.util.CasCreationUtils;
-import org.dkpro.core.testing.DkproTestContext;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 import de.tudarmstadt.ukp.clarin.webanno.diag.CasDoctor;
+import de.tudarmstadt.ukp.clarin.webanno.diag.ChecksRegistryImpl;
+import de.tudarmstadt.ukp.clarin.webanno.diag.RepairsRegistryImpl;
 import de.tudarmstadt.ukp.clarin.webanno.support.logging.LogMessage;
 
 public class AllAnnotationsIndexedCheckTest
@@ -42,6 +43,11 @@ public class AllAnnotationsIndexedCheckTest
     @Test
     public void testFail() throws Exception
     {
+        var checksRegistry = new ChecksRegistryImpl(asList(new AllFeatureStructuresIndexedCheck()));
+        checksRegistry.init();
+        var repairsRegistry = new RepairsRegistryImpl(emptyList());
+        repairsRegistry.init();
+
         TypeSystemDescription tsd = UIMAFramework.getResourceSpecifierFactory()
                 .createTypeSystemDescription();
 
@@ -67,18 +73,28 @@ public class AllAnnotationsIndexedCheckTest
         cas.addFsToIndexes(anno3);
 
         List<LogMessage> messages = new ArrayList<>();
-        CasDoctor cd = new CasDoctor(AllFeatureStructuresIndexedCheck.class);
+        CasDoctor cd = new CasDoctor(checksRegistry, repairsRegistry);
+        cd.setActiveChecks(
+                checksRegistry.getExtensions().stream().map(c -> c.getId()).toArray(String[]::new));
+        cd.setActiveRepairs(repairsRegistry.getExtensions().stream().map(c -> c.getId())
+                .toArray(String[]::new));
+
         // A project is not required for this check
         boolean result = cd.analyze(null, cas, messages);
 
         messages.forEach(System.out::println);
 
-        assertFalse(result);
+        Assertions.assertFalse(result);
     }
 
     @Test
     public void testOK() throws Exception
     {
+        var checksRegistry = new ChecksRegistryImpl(asList(new AllFeatureStructuresIndexedCheck()));
+        checksRegistry.init();
+        var repairsRegistry = new RepairsRegistryImpl(emptyList());
+        repairsRegistry.init();
+
         TypeSystemDescription tsd = UIMAFramework.getResourceSpecifierFactory()
                 .createTypeSystemDescription();
 
@@ -105,15 +121,17 @@ public class AllAnnotationsIndexedCheckTest
         cas.addFsToIndexes(anno3);
 
         List<LogMessage> messages = new ArrayList<>();
-        CasDoctor cd = new CasDoctor(AllFeatureStructuresIndexedCheck.class);
+        CasDoctor cd = new CasDoctor(checksRegistry, repairsRegistry);
+        cd.setActiveChecks(
+                checksRegistry.getExtensions().stream().map(c -> c.getId()).toArray(String[]::new));
+        cd.setActiveRepairs(repairsRegistry.getExtensions().stream().map(c -> c.getId())
+                .toArray(String[]::new));
+
         // A project is not required for this check
         boolean result = cd.analyze(null, cas, messages);
 
         messages.forEach(System.out::println);
 
-        assertTrue(result);
+        Assertions.assertTrue(result);
     }
-
-    @Rule
-    public DkproTestContext testContext = new DkproTestContext();
 }

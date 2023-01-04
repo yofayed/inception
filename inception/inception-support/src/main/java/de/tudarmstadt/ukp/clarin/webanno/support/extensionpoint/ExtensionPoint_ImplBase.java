@@ -17,12 +17,15 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.support.extensionpoint;
 
+import static de.tudarmstadt.ukp.clarin.webanno.support.logging.BaseLoggers.BOOT_LOG;
+import static java.util.Collections.unmodifiableList;
 import static java.util.stream.Collectors.toList;
 import static org.apache.commons.lang3.ClassUtils.getAbbreviatedName;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,31 +62,44 @@ public abstract class ExtensionPoint_ImplBase<C, E extends Extension<C>>
             AnnotationAwareOrderComparator.sort(extensions);
 
             for (E fs : extensions) {
-                log.info("Found {} extension: {}", getClass().getSimpleName(),
+                log.debug("Found {} extension: {}", getClass().getSimpleName(),
                         getAbbreviatedName(fs.getClass(), 20));
             }
         }
 
-        extensionsList = Collections.unmodifiableList(extensions);
+        BOOT_LOG.info("Found [{}] {} extensions", extensions.size(), getClass().getSimpleName());
+
+        extensionsList = unmodifiableList(extensions);
     }
 
     @Override
     public List<E> getExtensions()
     {
+        if (extensionsList == null) {
+            log.error(
+                    "List of extensions was accessed on this extension point before the extension "
+                            + "point was initialized!",
+                    new IllegalStateException());
+            return Collections.emptyList();
+        }
+
         return extensionsList;
     }
 
     @Override
     public List<E> getExtensions(C aContext)
     {
-        return getExtensions().stream().filter(e -> e.accepts(aContext)).collect(toList());
+        return getExtensions().stream() //
+                .filter(e -> e.accepts(aContext)) //
+                .collect(toList());
     }
 
     @SuppressWarnings("unchecked")
     @Override
-    public <X extends E> X getExtension(String aId)
+    public <X extends E> Optional<X> getExtension(String aId)
     {
-        return (X) getExtensions().stream().filter(fs -> fs.getId().equals(aId)).findFirst()
-                .orElse(null);
+        return (Optional<X>) getExtensions().stream() //
+                .filter(fs -> fs.getId().equals(aId)) //
+                .findFirst();
     }
 }

@@ -40,8 +40,8 @@ import org.apache.uima.jcas.tcas.Annotation;
 import org.apache.uima.resource.metadata.TypeDescription;
 import org.apache.uima.resource.metadata.TypeSystemDescription;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
-import de.tudarmstadt.ukp.clarin.webanno.api.dao.AnnotationSchemaServiceImpl;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
+import de.tudarmstadt.ukp.inception.schema.service.AnnotationSchemaServiceImpl;
 
 public class RecommenderTestHelper
 {
@@ -54,8 +54,8 @@ public class RecommenderTestHelper
 
         TypeSystemDescription tsd = typeSystem2TypeSystemDescription(aCas.getTypeSystem());
         TypeDescription typeDescription = tsd.getType(aTypeName);
-        typeDescription.addFeature(scoreFeatureName, "Confidence feature", TYPE_NAME_DOUBLE);
-        typeDescription.addFeature(scoreExplanationFeatureName, "Confidence explanation feature",
+        typeDescription.addFeature(scoreFeatureName, "Score feature", TYPE_NAME_DOUBLE);
+        typeDescription.addFeature(scoreExplanationFeatureName, "Score explanation feature",
                 TYPE_NAME_STRING);
         typeDescription.addFeature(FEATURE_NAME_IS_PREDICTION, "Is prediction", TYPE_NAME_BOOLEAN);
 
@@ -92,6 +92,15 @@ public class RecommenderTestHelper
 
         return JCasUtil.select(aCas.getJCas(), aClass).stream()
                 .filter(fs -> fs.getBooleanValue(feature)).collect(Collectors.toList());
+    }
+
+    public static List<AnnotationFS> getPredictions(CAS aCas, String aTypeName) throws Exception
+    {
+        Type type = CasUtil.getType(aCas, aTypeName);
+        Feature feature = type.getFeatureByBaseName(FEATURE_NAME_IS_PREDICTION);
+
+        return CasUtil.select(aCas, type).stream().filter(fs -> fs.getBooleanValue(feature))
+                .collect(Collectors.toList());
     }
 
 }

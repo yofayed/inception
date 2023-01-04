@@ -17,14 +17,14 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.ui.curation.page;
 
+import static de.tudarmstadt.ukp.clarin.webanno.model.PermissionLevel.CURATOR;
 import static java.lang.String.format;
 
 import javax.servlet.ServletContext;
 
 import org.apache.wicket.Page;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.core.annotation.Order;
-import org.springframework.stereotype.Component;
 
 import de.agilecoders.wicket.core.markup.html.bootstrap.image.IconType;
 import de.agilecoders.wicket.extensions.markup.html.bootstrap.icon.FontAwesome5IconType;
@@ -33,15 +33,24 @@ import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
 import de.tudarmstadt.ukp.clarin.webanno.ui.core.menu.ProjectMenuItem;
+import wicket.contrib.input.events.key.KeyType;
 
-@Component
+@ConditionalOnWebApplication
 @Order(200)
 public class CurationPageMenuItem
     implements ProjectMenuItem
 {
-    private @Autowired UserDao userRepo;
-    private @Autowired ProjectService projectService;
-    private @Autowired ServletContext servletContext;
+    private final UserDao userRepo;
+    private final ProjectService projectService;
+    private final ServletContext servletContext;
+
+    public CurationPageMenuItem(UserDao aUserRepo, ProjectService aProjectService,
+            ServletContext aServletContext)
+    {
+        userRepo = aUserRepo;
+        projectService = aProjectService;
+        servletContext = aServletContext;
+    }
 
     @Override
     public String getPath()
@@ -49,10 +58,12 @@ public class CurationPageMenuItem
         return "/curate";
     }
 
-    public String getUrl(long aProjectId, long aDocumentId)
+    public String getUrl(Project aProject, long aDocumentId)
     {
-        return format("%s/p/%d%s/%d", servletContext.getContextPath(), aProjectId, getPath(),
-                aDocumentId);
+        String p = aProject.getSlug() != null ? aProject.getSlug()
+                : String.valueOf(aProject.getId());
+
+        return format("%s/p/%s%s/%d", servletContext.getContextPath(), p, getPath(), aDocumentId);
     }
 
     @Override
@@ -76,12 +87,18 @@ public class CurationPageMenuItem
 
         // Visible if the current user is a curator
         User user = userRepo.getCurrentUser();
-        return projectService.isCurator(aProject, user);
+        return projectService.hasRole(user, aProject, CURATOR);
     }
 
     @Override
     public Class<? extends Page> getPageClass()
     {
         return CurationPage.class;
+    }
+
+    @Override
+    public KeyType[] shortcut()
+    {
+        return new KeyType[] { KeyType.Alt, KeyType.c };
     }
 }

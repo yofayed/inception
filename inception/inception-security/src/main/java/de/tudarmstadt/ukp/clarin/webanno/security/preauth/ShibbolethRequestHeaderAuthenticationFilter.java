@@ -17,70 +17,40 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.security.preauth;
 
-import java.util.HashSet;
-import java.util.Properties;
-import java.util.Set;
+import static de.tudarmstadt.ukp.clarin.webanno.security.UserDao.EMPTY_PASSWORD;
+import static java.util.stream.Collectors.joining;
+
+import java.lang.invoke.MethodHandles;
 
 import javax.servlet.http.HttpServletRequest;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.wicket.validation.ValidationError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.provisioning.UserDetailsManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.web.authentication.preauth.RequestHeaderAuthenticationFilter;
 
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
-import de.tudarmstadt.ukp.clarin.webanno.security.model.Role;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
-import de.tudarmstadt.ukp.clarin.webanno.support.SettingsUtil;
 
 public class ShibbolethRequestHeaderAuthenticationFilter
     extends RequestHeaderAuthenticationFilter
 {
-    private final Logger log = LoggerFactory.getLogger(getClass());
+    private final static Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    public static final String EMPTY_PASSWORD = "";
-
-    private UserDetailsManager userDetailsManager;
     private UserDao userRepository;
 
-    private void newUserLogin(String aID, HttpServletRequest aRequest)
+    private void newUserLogin(String aUsername)
     {
         User u = new User();
-        u.setUsername((String) super.getPreAuthenticatedPrincipal(aRequest));
+        u.setUsername(aUsername);
         u.setPassword(EMPTY_PASSWORD);
         u.setEnabled(true);
-
-        Set<Role> s = new HashSet<>();
-        s.add(Role.ROLE_USER);
-        Properties settings = SettingsUtil.getSettings();
-
-        String extraRoles = settings.getProperty(SettingsUtil.CFG_AUTH_PREAUTH_NEWUSER_ROLES);
-        if (StringUtils.isNotBlank(extraRoles)) {
-            for (String role : extraRoles.split(",")) {
-                try {
-                    s.add(Role.valueOf(role.trim()));
-                }
-                catch (IllegalArgumentException e) {
-                    log.debug("Ignoring unknown default role [" + role + "] for user ["
-                            + u.getUsername() + "]");
-                }
-            }
-        }
-        u.setRoles(s);
+        u.setRealm(UserDao.REALM_PREAUTH);
+        u.setRoles(PreAuthUtils.getPreAuthenticationNewUserRoles(u));
 
         userRepository.create(u);
-        log.debug("Created new user [" + u.getUsername() + "] with roles " + u.getRoles());
-    }
-
-    private void existingUserLogin(String aID, HttpServletRequest aRequest)
-    {
-        // Nothing to do
-    }
-
-    public void setUserDetailsManager(UserDetailsManager aUserDetailsManager)
-    {
-        userDetailsManager = aUserDetailsManager;
     }
 
     public void setUserRepository(UserDao aUserRepository)
@@ -91,16 +61,57 @@ public class ShibbolethRequestHeaderAuthenticationFilter
     @Override
     protected Object getPreAuthenticatedPrincipal(HttpServletRequest aRequest)
     {
-        String o = (String) super.getPreAuthenticatedPrincipal(aRequest);
+        String username = (String) super.getPreAuthenticatedPrincipal(aRequest);
 
-        if (o != null && !o.equals("")) {
-            if (!userDetailsManager.userExists(o)) {
-                newUserLogin(o, aRequest);
-            }
-            else {
-                existingUserLogin(o, aRequest);
-            }
+        return loadUser(username);
+    }
+
+    protected Object loadUser(String username)
+    {
+        denyAccessToUsersWithIllegalUsername(username);
+
+        User user = userRepository.get(username);
+        if (user != null) {
+            denyAccessOfRealmsDoNotMatch(UserDao.REALM_PREAUTH, user);
+            denyAccessToDeactivatedUsers(user);
         }
-        return o;
+        else {
+            newUserLogin(username);
+        }
+
+        return username;
+    }
+
+    private void denyAccessToUsersWithIllegalUsername(String aUsername)
+    {
+        if (StringUtils.isBlank(aUsername)) {
+            throw new BadCredentialsException("Username cannot be empty");
+        }
+
+        var userNameValidationResult = userRepository.validateUsername(aUsername);
+        if (!userNameValidationResult.isEmpty()) {
+            String messages = userNameValidationResult.stream() //
+                    .map(ValidationError::getMessage) //
+                    .collect(joining("\n- ", "\n- ", ""));
+            LOG.info("Prevented login of user [{}] with illegal username: {}", aUsername, messages);
+            throw new BadCredentialsException("Illegal username");
+        }
+    }
+
+    private void denyAccessOfRealmsDoNotMatch(String aExpectedRealm, User aUser)
+    {
+        if (!aExpectedRealm.equals(aUser.getRealm())) {
+            LOG.info("Prevented login of user {} from realm [{}] via realm [{}]", aUser,
+                    aUser.getRealm(), aExpectedRealm);
+            throw new BadCredentialsException("Realm mismatch");
+        }
+    }
+
+    private void denyAccessToDeactivatedUsers(User user)
+    {
+        if (!user.isEnabled()) {
+            LOG.info("Prevented login of locally deactivated user {}", user);
+            throw new BadCredentialsException("User deactivated");
+        }
     }
 }

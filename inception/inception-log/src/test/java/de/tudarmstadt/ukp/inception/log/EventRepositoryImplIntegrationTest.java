@@ -17,7 +17,12 @@
  */
 package de.tudarmstadt.ukp.inception.log;
 
+import static java.util.Calendar.HOUR_OF_DAY;
+import static org.apache.uima.fit.factory.TypeSystemDescriptionFactory.createTypeSystemDescription;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.text.DateFormat;
 import java.text.ParseException;
@@ -26,26 +31,46 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.apache.uima.util.CasCreationUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.autoconfigure.liquibase.LiquibaseAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 
+import de.tudarmstadt.ukp.clarin.webanno.api.DocumentImportExportService;
+import de.tudarmstadt.ukp.clarin.webanno.api.config.RepositoryAutoConfiguration;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
+import de.tudarmstadt.ukp.clarin.webanno.project.config.ProjectServiceAutoConfiguration;
+import de.tudarmstadt.ukp.clarin.webanno.security.config.SecurityAutoConfiguration;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
+import de.tudarmstadt.ukp.inception.annotation.storage.config.CasStorageServiceAutoConfiguration;
+import de.tudarmstadt.ukp.inception.documents.config.DocumentServiceAutoConfiguration;
 import de.tudarmstadt.ukp.inception.log.model.LoggedEvent;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
+import de.tudarmstadt.ukp.inception.schema.config.AnnotationSchemaServiceAutoConfiguration;
 
-@RunWith(SpringJUnit4ClassRunner.class)
-@ContextConfiguration(classes = SpringConfig.class)
-@Transactional
-@DataJpaTest(excludeAutoConfiguration = LiquibaseAutoConfiguration.class)
+@EnableAutoConfiguration
+@DataJpaTest(excludeAutoConfiguration = LiquibaseAutoConfiguration.class, showSql = false, //
+        properties = { //
+                "spring.main.banner-mode=off" })
+@EntityScan({ //
+        "de.tudarmstadt.ukp.inception", //
+        "de.tudarmstadt.ukp.clarin.webanno" })
+@Import({ //
+        ProjectServiceAutoConfiguration.class, //
+        DocumentServiceAutoConfiguration.class, //
+        CasStorageServiceAutoConfiguration.class, //
+        RepositoryAutoConfiguration.class, //
+        AnnotationSchemaServiceAutoConfiguration.class, //
+        SecurityAutoConfiguration.class })
 public class EventRepositoryImplIntegrationTest
 {
     private static final String PROJECT_NAME = "Test project";
@@ -56,15 +81,14 @@ public class EventRepositoryImplIntegrationTest
     private static final String EVENT_TYPE_AFTER_ANNO_EVENT = "AfterAnnotationUpdateEvent";
     private static final String SPAN_CREATED_EVENT = "SpanCreatedEvent";
 
-    @Autowired
-    private TestEntityManager testEntityManager;
+    private @Autowired TestEntityManager testEntityManager;
 
     private EventRepositoryImpl sut;
     private Project project;
     private User user;
     private LoggedEvent le;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception
     {
         sut = new EventRepositoryImpl(testEntityManager.getEntityManager());
@@ -72,7 +96,7 @@ public class EventRepositoryImplIntegrationTest
         user = createUser(USERNAME);
     }
 
-    @After
+    @AfterEach
     public void tearDown() throws Exception
     {
         testEntityManager.clear();
@@ -195,9 +219,9 @@ public class EventRepositoryImplIntegrationTest
         for (int i = 0; i < 6; i++) {
             le = buildLoggedEvent(project, user.getUsername(),
                     EVENT_TYPE_RECOMMENDER_EVALUATION_EVENT, new Date(), -1, DETAIL_JSON);
-            Date d = new Date();
-            d.setHours(i);
-            le.setCreated(d);
+            Calendar cal = Calendar.getInstance();
+            cal.set(HOUR_OF_DAY, i);
+            le.setCreated(cal.getTime());
             sut.create(le);
         }
 
@@ -214,11 +238,9 @@ public class EventRepositoryImplIntegrationTest
             le = buildLoggedEvent(project, user.getUsername(),
                     EVENT_TYPE_RECOMMENDER_EVALUATION_EVENT, new Date(), -1, DETAIL_JSON);
 
-            Calendar cal = Calendar.getInstance();
+            var cal = Calendar.getInstance();
             cal.set(Calendar.HOUR_OF_DAY, i);
-            Date date = cal.getTime();
-
-            le.setCreated(date);
+            le.setCreated(cal.getTime());
             sut.create(le);
         }
 
@@ -230,7 +252,7 @@ public class EventRepositoryImplIntegrationTest
         for (int i = 1; i < 5; i++) {
             assertThat(loggedEvents.get(i - 1).getCreated()).as(
                     "Check that the list of logged events is ordered by created time in descending order")
-                    .isAfterOrEqualsTo(loggedEvents.get(i).getCreated());
+                    .isAfterOrEqualTo(loggedEvents.get(i).getCreated());
         }
     }
 
@@ -249,31 +271,61 @@ public class EventRepositoryImplIntegrationTest
         assertThat(loggedEvents).as("Check that no logged event is found").isEmpty();
     }
 
+    @Test
+    public void getFilteredRecentLoggedEvents_ShouldReturnEvent()
+    {
+        LoggedEvent evalEvent = buildLoggedEvent(project, "!" + user.getUsername(),
+                EVENT_TYPE_RECOMMENDER_EVALUATION_EVENT, new Date(), -1, DETAIL_JSON);
+        LoggedEvent spanEvent = buildLoggedEvent(project, user.getUsername(), SPAN_CREATED_EVENT,
+                new Date(), -1, "");
+        sut.create(evalEvent);
+        sut.create(spanEvent);
+
+        List<LoggedEvent> loggedEvents = sut.listRecentActivity(user.getUsername(), 3);
+
+        assertThat(loggedEvents).hasSize(1);
+        assertThat(loggedEvents).contains(spanEvent);
+    }
+
     // Helper
     private Project createProject(String aName)
     {
-        Project project = new Project();
-        project.setName(aName);
-        return testEntityManager.persist(project);
+        Project p = new Project();
+        p.setName(aName);
+        return testEntityManager.persist(p);
     }
 
     private LoggedEvent buildLoggedEvent(Project aProject, String aUsername, String aEventType,
             Date aDate, long aDocId, String aDetails)
     {
-        LoggedEvent le = new LoggedEvent();
-        le.setUser(aUsername);
-        le.setProject(aProject.getId());
-        le.setDetails(aDetails);
-        le.setCreated(aDate);
-        le.setEvent(aEventType);
-        le.setDocument(aDocId);
-        return le;
+        var loggedEvent = new LoggedEvent();
+        loggedEvent.setUser(aUsername);
+        loggedEvent.setProject(aProject.getId());
+        loggedEvent.setDetails(aDetails);
+        loggedEvent.setCreated(aDate);
+        loggedEvent.setEvent(aEventType);
+        loggedEvent.setDocument(aDocId);
+        return loggedEvent;
     }
 
     public User createUser(String aUsername)
     {
-        User user = new User();
-        user.setUsername(aUsername);
-        return testEntityManager.persist(user);
+        return testEntityManager.persist(new User(aUsername));
+    }
+
+    @SpringBootConfiguration
+    public static class TestContext
+    {
+        @Bean
+        DocumentImportExportService documentImportExportService(
+                AnnotationSchemaService aSchemaService)
+            throws Exception
+        {
+            var tsd = createTypeSystemDescription();
+            var importService = mock(DocumentImportExportService.class);
+            when(importService.importCasFromFile(any(), any(), any(), any()))
+                    .thenReturn(CasCreationUtils.createCas(tsd, null, null, null));
+            return importService;
+        }
     }
 }

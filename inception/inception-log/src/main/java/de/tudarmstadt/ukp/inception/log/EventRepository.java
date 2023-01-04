@@ -19,7 +19,8 @@ package de.tudarmstadt.ukp.inception.log;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.function.Consumer;
+
+import org.apache.commons.lang3.function.FailableConsumer;
 
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.inception.log.model.LoggedEvent;
@@ -31,28 +32,66 @@ public interface EventRepository
     void create(LoggedEvent... aEvents);
 
     /**
-     * Get the aMaxSize amount of logged events of the given type, user name, project and
-     * recommender id from the db.
+     * @param aProject
+     *            the project to query the events from
+     * @param aUsername
+     *            the user who generated the events
+     * @param aEventType
+     *            the type of event
+     * @param aMaxSize
+     *            the maximum number of events to return
+     * @param aRecommenderId
+     *            the recommender to which the events relate
+     * @return logged events of the given type, user name, project and recommender id from the db.
      */
     List<LoggedEvent> listLoggedEventsForRecommender(Project aProject, String aUsername,
             String aEventType, int aMaxSize, long aRecommenderId);
 
-    void forEachLoggedEvent(Project aProject, Consumer<LoggedEvent> aConsumer);
+    <E extends Throwable> void forEachLoggedEvent(Project aProject,
+            FailableConsumer<LoggedEvent, E> aConsumer);
 
     /**
-     * Get the aMaxSize amount of logged events of the given types, user name and project for every
-     * document from the db.
+     * @return logged events of the given types, user name and project for every document from the
+     *         db.
+     * @param aProject
+     *            the project to query the events from
+     * @param aUsername
+     *            the user who generated the events
+     * @param aEventType
+     *            the type of event
+     * @param aMaxSize
+     *            the maximum number of events to return
      */
     List<LoggedEvent> listUniqueLoggedEventsForDoc(Project aProject, String aUsername,
             String[] aEventType, int aMaxSize);
 
     /**
-     * Get the aMaxSize amount of logged events of the given type, user name, project and detail
-     * string from the db.
+     * @return logged events of the given type, user name, project and detail string from the db.
+     * @param aProject
+     *            the project to query the events from
+     * @param aUsername
+     *            the user who generated the events
+     * @param aEventType
+     *            the type of event
+     * @param aMaxSize
+     *            the maximum number of events to return
+     * @param aDetail
+     *            the detail pattern per SQL LIKE operator, e.g. {@code "%recommender%"} finds all
+     *            events containing the string {@code "recommender"} in their detail
      */
     List<LoggedEvent> listLoggedEventsForDetail(Project aProject, String aUsername,
             String aEventType, int aMaxSize, String aDetail);
 
     List<LoggedEvent> listRecentActivity(Project aProject, String aUsername,
             Collection<String> aEventTypes, int aMaxSize);
+
+    /**
+     * @return recently logged events.
+     * 
+     * @param aUsername
+     *            the user to list events for.
+     * @param aMaxSize
+     *            return this number of recent events or less
+     */
+    List<LoggedEvent> listRecentActivity(String aUsername, int aMaxSize);
 }

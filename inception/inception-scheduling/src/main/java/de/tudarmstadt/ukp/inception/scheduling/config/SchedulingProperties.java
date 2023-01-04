@@ -18,9 +18,7 @@
 package de.tudarmstadt.ukp.inception.scheduling.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 
-@Component
 @ConfigurationProperties("inception.scheduling")
 public class SchedulingProperties
 {
@@ -44,6 +42,6 @@ public class SchedulingProperties
 
     public void setQueueSize(int aQueueSize)
     {
-        queueSize = queueSize;
+        queueSize = aQueueSize;
     }
 }

@@ -20,6 +20,7 @@ package de.tudarmstadt.ukp.inception.recommendation.imls.opennlp.doccat;
 import static de.tudarmstadt.ukp.clarin.webanno.api.casstorage.CasAccessMode.EXCLUSIVE_WRITE_ACCESS;
 import static de.tudarmstadt.ukp.inception.support.test.recommendation.RecommenderTestHelper.getPredictions;
 import static java.util.Arrays.asList;
+import static org.apache.commons.io.IOUtils.lineIterator;
 import static org.apache.uima.fit.factory.AnalysisEngineFactory.createEngine;
 import static org.apache.uima.fit.factory.CollectionReaderFactory.createReader;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,8 +33,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.io.LineIterator;
 import org.apache.uima.UIMAException;
 import org.apache.uima.analysis_engine.AnalysisEngine;
 import org.apache.uima.cas.CAS;
@@ -45,34 +44,34 @@ import org.dkpro.core.api.datasets.Dataset;
 import org.dkpro.core.api.datasets.DatasetFactory;
 import org.dkpro.core.api.io.JCasResourceCollectionReader_ImplBase;
 import org.dkpro.core.api.resources.CompressionUtils;
-import org.dkpro.core.testing.DkproTestContext;
 import org.dkpro.core.tokit.BreakIteratorSegmenter;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.dao.casstorage.CasStorageSession;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.dkpro.core.api.ner.type.NamedEntity;
 import de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Sentence;
+import de.tudarmstadt.ukp.inception.annotation.storage.CasStorageSession;
 import de.tudarmstadt.ukp.inception.recommendation.api.evaluation.DataSplitter;
 import de.tudarmstadt.ukp.inception.recommendation.api.evaluation.EvaluationResult;
 import de.tudarmstadt.ukp.inception.recommendation.api.evaluation.IncrementalSplitter;
 import de.tudarmstadt.ukp.inception.recommendation.api.evaluation.PercentageBasedSplitter;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.Recommender;
 import de.tudarmstadt.ukp.inception.recommendation.api.recommender.RecommenderContext;
+import de.tudarmstadt.ukp.inception.support.test.recommendation.DkproTestHelper;
 import de.tudarmstadt.ukp.inception.support.test.recommendation.RecommenderTestHelper;
 
 public class OpenNlpDoccatRecommenderTest
 {
-    private static File cache = DkproTestContext.getCacheFolder();
-    private static DatasetFactory loader = new DatasetFactory(cache);
+    private static final File cache = DkproTestHelper.getCacheFolder();
+    private static final DatasetFactory loader = new DatasetFactory(cache);
 
     private RecommenderContext context;
     private Recommender recommender;
     private OpenNlpDoccatRecommenderTraits traits;
 
-    @Before
+    @BeforeEach
     public void setUp()
     {
         context = new RecommenderContext();
@@ -215,8 +214,8 @@ public class OpenNlpDoccatRecommenderTest
 
             try (InputStream is = new BufferedInputStream(
                     CompressionUtils.getInputStream(res.getLocation(), res.getInputStream()))) {
-                LineIterator i = IOUtils.lineIterator(is, "UTF-8");
-                try {
+
+                try (var i = lineIterator(is, "UTF-8")) {
                     while (i.hasNext()) {
                         String line = i.next();
 
@@ -239,9 +238,6 @@ public class OpenNlpDoccatRecommenderTest
 
                         new Sentence(aJCas, sentenceBegin, text.length()).addToIndexes();
                     }
-                }
-                finally {
-                    LineIterator.closeQuietly(i);
                 }
 
                 aJCas.setDocumentText(text.toString());

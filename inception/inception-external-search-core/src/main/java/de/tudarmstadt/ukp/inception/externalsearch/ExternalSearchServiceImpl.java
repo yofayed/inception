@@ -59,6 +59,7 @@ public class ExternalSearchServiceImpl
     /**
      * For testing.
      */
+    @SuppressWarnings("javadoc")
     public ExternalSearchServiceImpl(ExternalSearchProviderRegistry aExternalSearchProviderRegistry,
             EntityManager aEntityManager)
     {
@@ -66,6 +67,7 @@ public class ExternalSearchServiceImpl
         entityManager = aEntityManager;
     }
 
+    @SuppressWarnings({ "rawtypes", "unchecked" })
     @Override
     public List<ExternalSearchResult> query(User aUser, DocumentRepository aRepository,
             String aQuery)
@@ -73,12 +75,12 @@ public class ExternalSearchServiceImpl
     {
         log.debug("Running query: {}", aQuery);
 
-        ExternalSearchProviderFactory factory = externalSearchProviderRegistry
+        ExternalSearchProviderFactory<?> factory = externalSearchProviderRegistry
                 .getExternalSearchProviderFactory(aRepository.getType());
 
         ExternalSearchProvider provider = factory.getNewExternalSearchProvider();
 
-        Object traits = factory.readTraits(aRepository);
+        var traits = factory.readTraits(aRepository);
 
         List<ExternalSearchResult> results = provider.executeQuery(aRepository, traits, aQuery);
 
@@ -89,11 +91,28 @@ public class ExternalSearchServiceImpl
     @Transactional
     public List<DocumentRepository> listDocumentRepositories(Project aProject)
     {
-        List<DocumentRepository> settings = entityManager
-                .createQuery("FROM DocumentRepository WHERE project = :project ORDER BY name ASC",
-                        DocumentRepository.class)
-                .setParameter("project", aProject).getResultList();
-        return settings;
+        String query = String.join("\n", //
+                "FROM DocumentRepository", //
+                "WHERE project = :project", //
+                "ORDER BY name ASC");
+
+        return entityManager.createQuery(query, DocumentRepository.class)
+                .setParameter("project", aProject) //
+                .getResultList();
+    }
+
+    @Override
+    @Transactional
+    public boolean existsEnabledDocumentRepository(Project aProject)
+    {
+        String query = String.join("\n", //
+                "SELECT COUNT(*)", //
+                "FROM DocumentRepository", //
+                "WHERE project = :project");
+
+        return entityManager.createQuery(query, Long.class) //
+                .setParameter("project", aProject) //
+                .getSingleResult() > 0;
     }
 
     @Override
@@ -128,12 +147,13 @@ public class ExternalSearchServiceImpl
         return entityManager.find(DocumentRepository.class, aId);
     }
 
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public ExternalSearchResult getDocumentResult(DocumentRepository aRepository,
             String aCollectionId, String aDocumentId)
         throws IOException
     {
-        ExternalSearchProviderFactory factory = externalSearchProviderRegistry
+        ExternalSearchProviderFactory<?> factory = externalSearchProviderRegistry
                 .getExternalSearchProviderFactory(aRepository.getType());
 
         ExternalSearchProvider provider = factory.getNewExternalSearchProvider();
@@ -143,12 +163,13 @@ public class ExternalSearchServiceImpl
         return provider.getDocumentResult(aRepository, traits, aCollectionId, aDocumentId);
     }
 
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public String getDocumentText(DocumentRepository aRepository, String aCollectionId,
             String aDocumentId)
         throws IOException
     {
-        ExternalSearchProviderFactory factory = externalSearchProviderRegistry
+        ExternalSearchProviderFactory<?> factory = externalSearchProviderRegistry
                 .getExternalSearchProviderFactory(aRepository.getType());
 
         ExternalSearchProvider provider = factory.getNewExternalSearchProvider();
@@ -158,12 +179,13 @@ public class ExternalSearchServiceImpl
         return provider.getDocumentText(aRepository, traits, aCollectionId, aDocumentId);
     }
 
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public InputStream getDocumentAsStream(DocumentRepository aRepository, String aCollectionId,
             String aDocumentId)
         throws IOException
     {
-        ExternalSearchProviderFactory factory = externalSearchProviderRegistry
+        ExternalSearchProviderFactory<?> factory = externalSearchProviderRegistry
                 .getExternalSearchProviderFactory(aRepository.getType());
 
         ExternalSearchProvider provider = factory.getNewExternalSearchProvider();
@@ -173,12 +195,13 @@ public class ExternalSearchServiceImpl
         return provider.getDocumentAsStream(aRepository, traits, aCollectionId, aDocumentId);
     }
 
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public String getDocumentFormat(DocumentRepository aRepository, String aCollectionId,
             String aDocumentId)
         throws IOException
     {
-        ExternalSearchProviderFactory factory = externalSearchProviderRegistry
+        ExternalSearchProviderFactory<?> factory = externalSearchProviderRegistry
                 .getExternalSearchProviderFactory(aRepository.getType());
 
         ExternalSearchProvider provider = factory.getNewExternalSearchProvider();

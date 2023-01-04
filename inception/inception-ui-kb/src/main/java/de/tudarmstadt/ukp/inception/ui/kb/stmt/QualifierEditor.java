@@ -39,7 +39,6 @@ import org.apache.wicket.request.cycle.RequestCycle;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 import org.eclipse.rdf4j.model.IRI;
 
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.select.BootstrapSelect;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxButton;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxLink;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior;
@@ -93,7 +92,7 @@ public class QualifierEditor
         private Component initialFocusComponent;
 
         /**
-         * Creates a new fragement for editing a qualifier.<br>
+         * Creates a new fragment for editing a qualifier.<br>
          * The editor has two slightly different behaviors, depending on the value of
          * {@code isNewQualifier}:
          * <ul>
@@ -119,7 +118,7 @@ public class QualifierEditor
             IModel<KBQualifier> compoundModel = CompoundPropertyModel.of(aQualifier);
 
             Form<KBQualifier> form = new Form<>("form", compoundModel);
-            DropDownChoice<KBProperty> type = new BootstrapSelect<>("property");
+            DropDownChoice<KBProperty> type = new DropDownChoice<>("property");
             type.setChoiceRenderer(new ChoiceRenderer<>("uiLabel"));
             type.setChoices(kbService.listProperties(kbModel.getObject(), false));
             type.setRequired(true);

@@ -18,25 +18,22 @@
 package de.tudarmstadt.ukp.clarin.webanno.ui.annotation.sidebar.docinfo;
 
 import org.apache.wicket.model.IModel;
-import org.apache.wicket.request.Url;
-import org.apache.wicket.request.resource.ResourceReference;
-import org.apache.wicket.request.resource.UrlResourceReference;
-import org.springframework.stereotype.Component;
 
+import de.agilecoders.wicket.core.markup.html.bootstrap.image.IconType;
+import de.agilecoders.wicket.extensions.markup.html.bootstrap.icon.FontAwesome5IconType;
 import de.tudarmstadt.ukp.clarin.webanno.api.CasProvider;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.action.AnnotationActionHandler;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotatorState;
+import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.AnnotationPage;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.sidebar.AnnotationSidebarFactory_ImplBase;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.sidebar.AnnotationSidebar_ImplBase;
+import de.tudarmstadt.ukp.inception.editor.action.AnnotationActionHandler;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
 
-@Component("documentInfoSidebar")
+// This now mainly serves as example code - we do not actually use it
+//@Component("documentInfoSidebar")
 public class DocumentInfoSidebarFactory
     extends AnnotationSidebarFactory_ImplBase
 {
-    private static final ResourceReference ICON = new UrlResourceReference(
-            Url.parse("images/information.png")).setContextRelative(true);
-
     @Override
     public String getDisplayName()
     {
@@ -44,9 +41,27 @@ public class DocumentInfoSidebarFactory
     }
 
     @Override
-    public ResourceReference getIcon()
+    public String getDescription()
     {
-        return ICON;
+        return "Displays basic information about the current document.";
+    }
+
+    @Override
+    public IconType getIcon()
+    {
+        return FontAwesome5IconType.info_s;
+    }
+
+    @Override
+    public boolean available(Project aProject)
+    {
+        return false;
+    }
+
+    @Override
+    public boolean applies(AnnotatorState aState)
+    {
+        return false;
     }
 
     @Override

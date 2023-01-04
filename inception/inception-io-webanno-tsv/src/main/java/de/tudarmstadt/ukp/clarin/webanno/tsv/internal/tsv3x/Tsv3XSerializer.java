@@ -88,6 +88,11 @@ public class Tsv3XSerializer
 
     /**
      * Write the schema header.
+     * 
+     * @param aOut
+     *            the writer
+     * @param aHeaderColumns
+     *            the header columns
      */
     public void write(PrintWriter aOut, List<TsvColumn> aHeaderColumns)
     {
@@ -187,7 +192,7 @@ public class Tsv3XSerializer
             aOut.print(escapeText(sentenceId));
             aOut.print(LINE_BREAK);
         }
-        
+
         for (String line : lines) {
             aOut.print(PREFIX_TEXT);
             aOut.print(escapeText(line));

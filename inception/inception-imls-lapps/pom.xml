@@ -20,28 +20,27 @@
   <parent>
     <groupId>de.tudarmstadt.ukp.inception.app</groupId>
     <artifactId>inception-app</artifactId>
-    <version>0.20.0-SNAPSHOT</version>
+    <version>27.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>inception-imls-lapps</artifactId>
-  <name>INCEpTION - ML - LAPPS Grid</name>
+  <name>INCEpTION - ML - LAPPS Grid (deprecated)</name>
   <dependencies>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-recommendation-api</artifactId>
     </dependency>
-
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-model</artifactId>
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-api</artifactId>
+      <artifactId>inception-support</artifactId>
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-support</artifactId>
+      <artifactId>inception-api-render</artifactId>
     </dependency>
 
     <!-- DKPro -->
@@ -113,14 +112,6 @@
       <groupId>org.apache.wicket</groupId>
       <artifactId>wicket-spring</artifactId>
     </dependency>
-    <dependency>
-      <groupId>org.danekja</groupId>
-      <artifactId>jdk-serializable-functional</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>de.agilecoders.wicket</groupId>
-      <artifactId>wicket-bootstrap-extensions</artifactId>
-    </dependency>
 
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
@@ -130,6 +121,10 @@
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-annotations</artifactId>
+    </dependency>
 
     <!-- LOGGING DEPENDENCIES - SLF4J -->
     <dependency>
@@ -137,48 +132,15 @@
       <artifactId>slf4j-api</artifactId>
     </dependency>
 
-    <!-- Testing -->
-    <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>nl.ru</groupId>
-      <artifactId>test-categories</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>pl.pragmatists</groupId>
-      <artifactId>JUnitParams</artifactId>
-      <version>1.1.1</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.assertj</groupId>
-      <artifactId>assertj-core</artifactId>
-      <scope>test</scope>
-    </dependency>
-
+    <!-- DEPENDENCIES FOR TESTING -->
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-api-dao</artifactId>
+      <artifactId>inception-annotation-storage</artifactId>
       <scope>test</scope>
     </dependency>
-
     <dependency>
       <groupId>org.dkpro.core</groupId>
       <artifactId>dkpro-core-io-conll-asl</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.dkpro.core</groupId>
-      <artifactId>dkpro-core-api-datasets-asl</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.dkpro.core</groupId>
-      <artifactId>dkpro-core-testing-asl</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -191,20 +153,9 @@
       <artifactId>inception-testing</artifactId>
       <scope>test</scope>
     </dependency>
-
     <dependency>
-      <groupId>com.squareup.okhttp3</groupId>
-      <artifactId>mockwebserver</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.squareup.okio</groupId>
-      <artifactId>okio</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.squareup.okhttp3</groupId>
-      <artifactId>okhttp</artifactId>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-api</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

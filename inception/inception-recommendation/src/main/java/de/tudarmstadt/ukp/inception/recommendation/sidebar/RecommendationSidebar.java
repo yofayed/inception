@@ -32,7 +32,6 @@ import org.apache.wicket.markup.html.form.Form;
 import org.apache.wicket.markup.html.form.NumberTextField;
 import org.apache.wicket.model.CompoundPropertyModel;
 import org.apache.wicket.model.IModel;
-import org.apache.wicket.model.Model;
 import org.apache.wicket.model.StringResourceModel;
 import org.apache.wicket.model.util.ListModel;
 import org.apache.wicket.spring.injection.annot.SpringBean;
@@ -41,11 +40,7 @@ import org.wicketstuff.event.annotation.OnEvent;
 import com.googlecode.wicket.jquery.core.Options;
 import com.googlecode.wicket.kendo.ui.widget.tooltip.TooltipBehavior;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
 import de.tudarmstadt.ukp.clarin.webanno.api.CasProvider;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.action.AnnotationActionHandler;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotatorState;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.rendering.event.RenderAnnotationsEvent;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
@@ -56,17 +51,20 @@ import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaModelAdapter;
 import de.tudarmstadt.ukp.clarin.webanno.support.logging.LogMessageGroup;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.AnnotationPage;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.sidebar.AnnotationSidebar_ImplBase;
+import de.tudarmstadt.ukp.inception.editor.action.AnnotationActionHandler;
 import de.tudarmstadt.ukp.inception.recommendation.api.RecommendationService;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.Preferences;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.Recommender;
 import de.tudarmstadt.ukp.inception.recommendation.api.recommender.RecommendationEngineFactory;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
+import de.tudarmstadt.ukp.inception.rendering.request.RenderRequestedEvent;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
+import de.tudarmstadt.ukp.inception.support.help.DocLink;
 
 public class RecommendationSidebar
     extends AnnotationSidebar_ImplBase
 {
     private static final long serialVersionUID = 4306746527837380863L;
-
-    private static final String LEARNING_CURVE = "learningCurve";
 
     private @SpringBean RecommendationService recommendationService;
     private @SpringBean AnnotationSchemaService annoService;
@@ -114,11 +112,13 @@ public class RecommendationSidebar
         form = new Form<>("form", CompoundPropertyModel.of(modelPreferences));
         form.setOutputMarkupId(true);
 
+        form.add(new DocLink("maxSuggestionsHelpLink", "_recommendation_sidebar"));
+
         form.add(new NumberTextField<Integer>("maxPredictions", Integer.class) //
                 .setMinimum(1).setMaximum(10).setStep(1) //
                 .add(visibleWhen(() -> !form.getModelObject().isShowAllPredictions())));
 
-        form.add(new NumberTextField<Double>("confidenceThreshold", Double.class) //
+        form.add(new NumberTextField<Double>("scoreThreshold", Double.class) //
                 .setStep(0.1d) //
                 .add(visibleWhen(() -> !form.getModelObject().isShowAllPredictions())));
 
@@ -132,14 +132,14 @@ public class RecommendationSidebar
 
         add(form);
 
-        add(new LearningCurveChartPanel(LEARNING_CURVE, aModel)
-                .add(visibleWhen(() -> !recommenders.isEmpty())));
+        // add(new LearningCurveChartPanel(LEARNING_CURVE, aModel)
+        // .add(visibleWhen(() -> !recommenders.isEmpty())));
 
         recommenderInfos = new RecommenderInfoPanel("recommenders", aModel);
         recommenderInfos.add(visibleWhen(() -> !recommenders.isEmpty()));
         add(recommenderInfos);
 
-        logDialog = new LogDialog("logDialog", Model.of("Recommender Log"));
+        logDialog = new LogDialog("logDialog");
         add(logDialog);
 
     }
@@ -170,7 +170,7 @@ public class RecommendationSidebar
     }
 
     @OnEvent
-    public void onRenderAnnotations(RenderAnnotationsEvent aEvent)
+    public void onRenderRequested(RenderRequestedEvent aEvent)
     {
         aEvent.getRequestHandler().add(warning);
     }
@@ -187,11 +187,11 @@ public class RecommendationSidebar
     {
         AnnotatorState state = getModelObject();
         recommendationService.clearState(state.getUser().getUsername());
-        recommendationService.triggerSelectionTrainingAndClassification(
-                state.getUser().getUsername(), state.getProject(), "User request via sidebar",
-                state.getDocument());
+        recommendationService.triggerSelectionTrainingAndPrediction(state.getUser().getUsername(),
+                state.getProject(), "User request via sidebar", state.getDocument());
         info("Annotation state cleared - re-training from scratch...");
         getAnnotationPage().actionRefreshDocument(aTarget);
+        aTarget.add(recommenderInfos);
         aTarget.addChildren(getPage(), IFeedback.class);
     }
 
@@ -205,7 +205,7 @@ public class RecommendationSidebar
             }
             for (Recommender recommender : recommendationService.listEnabledRecommenders(layer)) {
                 RecommendationEngineFactory<?> factory = recommendationService
-                        .getRecommenderFactory(recommender);
+                        .getRecommenderFactory(recommender).orElse(null);
 
                 // E.g. if the module providing a configured recommender has been disabled but the
                 // recommender is still configured.

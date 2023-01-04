@@ -23,16 +23,16 @@ import javax.persistence.PersistenceContext;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
 import de.tudarmstadt.ukp.clarin.webanno.api.CasStorageService;
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
-import de.tudarmstadt.ukp.clarin.webanno.api.RepositoryProperties;
-import de.tudarmstadt.ukp.clarin.webanno.curation.storage.CurationDocumentService;
+import de.tudarmstadt.ukp.clarin.webanno.api.config.RepositoryProperties;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
+import de.tudarmstadt.ukp.inception.curation.service.CurationDocumentService;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
 import de.tudarmstadt.ukp.inception.versioning.VersioningService;
 import de.tudarmstadt.ukp.inception.versioning.VersioningServiceImpl;
+import de.tudarmstadt.ukp.inception.versioning.ui.VersioningMenuItem;
 import de.tudarmstadt.ukp.inception.versioning.ui.VersioningSettingsPanelFactory;
 
 @Configuration
@@ -51,10 +51,15 @@ public class VersioningServiceAutoConfiguration
                 aDocumentService, aCurationDocumentService, aCasStorageService, aUserDao);
     }
 
-    @Order(8000)
     @Bean
     public VersioningSettingsPanelFactory versioningSettingsPanelFactory()
     {
         return new VersioningSettingsPanelFactory();
+    }
+
+    @Bean
+    public VersioningMenuItem versioningMenuItem()
+    {
+        return new VersioningMenuItem();
     }
 }

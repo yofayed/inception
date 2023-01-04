@@ -35,8 +35,8 @@ import org.eclipse.rdf4j.repository.sail.SailRepository;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.sail.lucene.LuceneSail;
 import org.eclipse.rdf4j.sail.memory.MemoryStore;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import de.tudarmstadt.ukp.inception.kb.RepositoryType;
 import de.tudarmstadt.ukp.inception.kb.graph.KBHandle;
@@ -79,7 +79,7 @@ public class WikiDataReificationTest
             "wds:statement4", //
             "    ps:P373 'Mona Lisa' ."); // value: 'Mona Lisa'
 
-    @Before
+    @BeforeEach
     public void setUp()
     {
         kb = new KnowledgeBase();
@@ -156,7 +156,8 @@ public class WikiDataReificationTest
 
         assertThat(result).extracting(stmt -> stmt.getInstance().getIdentifier())
                 .allMatch(id -> id.equals(MONA_LISA));
-        assertThat(result).usingElementComparatorIgnoringFields("originalTriples", "qualifiers")
+        assertThat(result) //
+                .usingElementComparatorIgnoringFields("originalTriples", "qualifiers")
                 .containsExactlyInAnyOrder(stmt1, stmt2, stmt3, stmt4);
     }
 

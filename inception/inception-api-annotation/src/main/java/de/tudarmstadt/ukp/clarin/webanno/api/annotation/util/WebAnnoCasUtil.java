@@ -20,6 +20,8 @@ package de.tudarmstadt.ukp.clarin.webanno.api.annotation.util;
 import static org.apache.uima.cas.CAS.FEATURE_BASE_NAME_BEGIN;
 import static org.apache.uima.cas.CAS.FEATURE_BASE_NAME_END;
 import static org.apache.uima.cas.CAS.FEATURE_BASE_NAME_LANGUAGE;
+import static org.apache.uima.cas.impl.Serialization.deserializeCASComplete;
+import static org.apache.uima.cas.impl.Serialization.serializeCASComplete;
 import static org.apache.uima.fit.util.CasUtil.getType;
 import static org.apache.uima.fit.util.CasUtil.select;
 import static org.apache.uima.fit.util.CasUtil.selectAt;
@@ -29,30 +31,29 @@ import static org.apache.uima.fit.util.CasUtil.selectSingle;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.StreamSupport;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Validate;
-import org.apache.uima.cas.ArrayFS;
+import org.apache.uima.UIMAException;
 import org.apache.uima.cas.CAS;
+import org.apache.uima.cas.FSIterator;
 import org.apache.uima.cas.Feature;
 import org.apache.uima.cas.FeatureStructure;
 import org.apache.uima.cas.Type;
+import org.apache.uima.cas.impl.CASCompleteSerializer;
 import org.apache.uima.cas.impl.CASImpl;
 import org.apache.uima.cas.text.AnnotationFS;
+import org.apache.uima.cas.text.AnnotationIndex;
 import org.apache.uima.fit.util.CasUtil;
 import org.apache.uima.fit.util.FSUtil;
 import org.apache.uima.resource.ResourceInitializationException;
 import org.apache.uima.resource.metadata.TypeSystemDescription;
 import org.apache.uima.util.CasCreationUtils;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.adapter.FeatureFilter;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.LinkWithRoleModel;
-import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
+import de.tudarmstadt.ukp.clarin.webanno.support.uima.ICasUtil;
 import de.tudarmstadt.ukp.dkpro.core.api.metadata.type.DocumentMetaData;
 import de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Sentence;
 import de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Token;
@@ -83,6 +84,23 @@ public class WebAnnoCasUtil
     public static CAS createCas() throws ResourceInitializationException
     {
         return createCas(null);
+    }
+
+    /**
+     * Creates a copy of the given CAS.
+     * 
+     * @param aOriginal
+     *            the original CAS
+     * @return the copy
+     * @throws UIMAException
+     *             if there was a problem preparing the copy.
+     */
+    public static CAS createCasCopy(CAS aOriginal) throws UIMAException
+    {
+        CAS copy = CasCreationUtils.createCas((TypeSystemDescription) null, null, null);
+        CASCompleteSerializer serializer = serializeCASComplete((CASImpl) getRealCas(aOriginal));
+        deserializeCASComplete(serializer, (CASImpl) getRealCas(copy));
+        return copy;
     }
 
     public static CAS getRealCas(CAS aCas)
@@ -116,101 +134,6 @@ public class WebAnnoCasUtil
     }
 
     /**
-     * Return true if these two annotations agree on every non slot features
-     */
-    public static boolean isEquivalentSpanAnnotation(AnnotationFS aFs1, AnnotationFS aFs2,
-            FeatureFilter aFilter)
-    {
-        // Check offsets (because they are excluded by shouldIgnoreFeatureOnMerge())
-        if (aFs1.getBegin() != aFs2.getBegin() || aFs1.getEnd() != aFs2.getEnd()) {
-            return false;
-        }
-
-        // Check the features (basically limiting to the primitive features)
-        for (Feature f1 : aFs1.getType().getFeatures()) {
-            if (aFilter != null && !aFilter.isAllowed(aFs1, f1)) {
-                continue;
-            }
-
-            Object value1 = getFeatureValue(aFs1, f1);
-
-            Feature f2 = aFs2.getType().getFeatureByBaseName(f1.getShortName());
-            Object value2 = f2 != null ? getFeatureValue(aFs2, f2) : getDefaultFeatureValue(f1);
-
-            if (!Objects.equals(value1, value2)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * Do not check on agreement on Position and SOfa feature - already checked
-     */
-    public static boolean isBasicFeature(Feature aFeature)
-    {
-        // FIXME The two parts of this OR statement seem to be redundant. Also the order
-        // of the check should be changes such that equals is called on the constant.
-        return aFeature.getName().equals(CAS.FEATURE_FULL_NAME_SOFA)
-                || aFeature.toString().equals("uima.cas.AnnotationBase:sofa");
-    }
-
-    /**
-     * Get the feature value of this {@code Feature} on this annotation
-     */
-    public static Object getFeatureValue(FeatureStructure aFS, Feature aFeature)
-    {
-        switch (aFeature.getRange().getName()) {
-        case CAS.TYPE_NAME_STRING:
-            return aFS.getFeatureValueAsString(aFeature);
-        case CAS.TYPE_NAME_BOOLEAN:
-            return aFS.getBooleanValue(aFeature);
-        case CAS.TYPE_NAME_FLOAT:
-            return aFS.getFloatValue(aFeature);
-        case CAS.TYPE_NAME_INTEGER:
-            return aFS.getIntValue(aFeature);
-        case CAS.TYPE_NAME_BYTE:
-            return aFS.getByteValue(aFeature);
-        case CAS.TYPE_NAME_DOUBLE:
-            return aFS.getDoubleValue(aFeature);
-        case CAS.TYPE_NAME_LONG:
-            return aFS.getLongValue(aFeature);
-        case CAS.TYPE_NAME_SHORT:
-            return aFS.getShortValue(aFeature);
-        default:
-            return null;
-        // return aFS.getFeatureValue(aFeature);
-        }
-    }
-
-    /**
-     * Get the feature value of this {@code Feature} on this annotation
-     */
-    public static Object getDefaultFeatureValue(Feature aFeature)
-    {
-        switch (aFeature.getRange().getName()) {
-        case CAS.TYPE_NAME_STRING:
-            return null;
-        case CAS.TYPE_NAME_BOOLEAN:
-            return false;
-        case CAS.TYPE_NAME_FLOAT:
-            return 0.0f;
-        case CAS.TYPE_NAME_INTEGER:
-            return 0;
-        case CAS.TYPE_NAME_BYTE:
-            return (byte) 0;
-        case CAS.TYPE_NAME_DOUBLE:
-            return 0.0d;
-        case CAS.TYPE_NAME_LONG:
-            return 0l;
-        case CAS.TYPE_NAME_SHORT:
-            return (short) 0;
-        default:
-            return null;
-        }
-    }
-
-    /**
      * Annotation a and annotation b are the same if they have the same address.
      *
      * @param a
@@ -229,7 +152,7 @@ public class WebAnnoCasUtil
             return false;
         }
 
-        return getAddr(a) == getAddr(b);
+        return ICasUtil.getAddr(a) == ICasUtil.getAddr(b);
     }
 
     /**
@@ -270,35 +193,17 @@ public class WebAnnoCasUtil
      */
     public static boolean isBeginEndInSameSentence(CAS aCas, int aBegin, int aEnd)
     {
-        // return !aCas.select(getType(aCas, Sentence.class)).covering(aBegin, aEnd).isEmpty();
-        return StreamSupport
-                .stream(aCas.getAnnotationIndex(getType(aCas, Sentence.class)).spliterator(), false)
-                .filter(s -> s.getBegin() <= aBegin && aBegin < s.getEnd())
-                .filter(s -> s.getBegin() <= aEnd && aEnd <= s.getEnd()).findFirst().isPresent();
-    }
+        var sentenceIndex = aCas.getAnnotationIndex(getType(aCas, Sentence.class));
 
-    public static int getAddr(FeatureStructure aFS)
-    {
-        return ((CASImpl) aFS.getCAS()).ll_getFSRef(aFS);
-    }
+        if (sentenceIndex.isEmpty()) {
+            throw new IllegalArgumentException("Unable to check if start and end offsets are in "
+                    + "the same sentence because the CAS contains no sentences!");
+        }
 
-    public static AnnotationFS selectAnnotationByAddr(CAS aCas, int aAddress)
-    {
-        return selectByAddr(aCas, AnnotationFS.class, aAddress);
-    }
-
-    public static FeatureStructure selectFsByAddr(CAS aCas, int aAddress)
-    {
-        return aCas.getLowLevelCAS().ll_getFSForRef(aAddress);
-    }
-
-    public static <T extends AnnotationFS> AnnotationFS selectByAddr(CAS aCas, Class<T> aType,
-            int aAddress)
-    {
-        // Check that the type passed is actually an annotation type
-        CasUtil.getAnnotationType(aCas, aType);
-
-        return aCas.getLowLevelCAS().ll_getFSForRef(aAddress);
+        return StreamSupport.stream(sentenceIndex.spliterator(), false) //
+                .filter(s -> s.getBegin() <= aBegin && aBegin < s.getEnd()) //
+                .filter(s -> s.getBegin() <= aEnd && aEnd <= s.getEnd()) //
+                .findFirst().isPresent();
     }
 
     /**
@@ -330,7 +235,6 @@ public class WebAnnoCasUtil
     public static boolean exists(CAS aCas, Type aType)
     {
         return !aCas.select(aType).isEmpty();
-        // return aCas.getAnnotationIndex(aType).iterator().hasNext();
     }
 
     /**
@@ -437,7 +341,7 @@ public class WebAnnoCasUtil
 
         AnnotationFS currentToken = selectAt(aCas, tokenType, aBegin, aEnd).stream().findFirst()
                 .orElse(null);
-        // thid happens when tokens such as Dr. OR Ms. selected with double
+        // this happens when tokens such as Dr. OR Ms. selected with double
         // click, which make seletected text as Dr OR Ms
         if (currentToken == null) {
             currentToken = selectAt(aCas, tokenType, aBegin, aEnd + 1).stream().findFirst()
@@ -450,6 +354,86 @@ public class WebAnnoCasUtil
         }
 
         return nextToken;
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T extends AnnotationFS> T getNext(T aRef)
+    {
+        CAS cas = aRef.getCAS();
+        AnnotationIndex<AnnotationFS> idx = cas.getAnnotationIndex(aRef.getType());
+        FSIterator<AnnotationFS> it = idx.iterator(aRef);
+
+        if (!it.isValid()) {
+            return null;
+        }
+
+        // If the first annotation we hit is already the reference annotation, we can simply
+        // move on to the next one and are done.
+        if (it.get() == aRef) {
+            it.moveToNext();
+            return it.isValid() ? (T) it.get() : null;
+        }
+
+        // Seek left until we hit the last FS that is no longer equal to the current
+        boolean moved = false;
+        while (it.isValid() && idx.compare(it.get(), aRef) == 0) {
+            it.moveToPrevious();
+            moved = true;
+        }
+
+        if (moved) {
+            it.moveToNext();
+        }
+
+        while (it.isValid() && idx.compare(it.get(), aRef) == 0) {
+            if (it.get() == aRef) {
+                it.moveToNext();
+                return it.isValid() ? (T) it.get() : null;
+            }
+            it.moveToNext();
+        }
+
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T extends AnnotationFS> T getPrev(T aRef)
+    {
+        CAS cas = aRef.getCAS();
+        AnnotationIndex<AnnotationFS> idx = cas.getAnnotationIndex(aRef.getType());
+        FSIterator<AnnotationFS> it = idx.iterator(aRef);
+
+        if (!it.isValid()) {
+            return null;
+        }
+
+        // If the first annotation we hit is already the reference annotation, we can simply
+        // move on to the previous one and are done.
+        if (it.get() == aRef) {
+            it.moveToPrevious();
+            return it.isValid() ? (T) it.get() : null;
+        }
+
+        // Seek left until we hit the last FS that is no longer equal to the current
+        boolean moved = false;
+        while (it.isValid() && idx.compare(it.get(), aRef) == 0) {
+            it.moveToPrevious();
+            moved = true;
+        }
+
+        if (moved) {
+            it.moveToNext();
+        }
+
+        while (it.isValid() && idx.compare(it.get(), aRef) == 0) {
+            if (it.get() == aRef) {
+                it.moveToPrevious();
+                return it.isValid() ? (T) it.get() : null;
+            }
+            it.moveToNext();
+        }
+
+        return null;
     }
 
     /**
@@ -599,6 +583,7 @@ public class WebAnnoCasUtil
         }
     }
 
+    @SuppressWarnings("unchecked")
     public static <T> T getFeature(FeatureStructure aFS, String aFeatureName)
     {
         Feature feature = aFS.getType().getFeatureByBaseName(aFeatureName);
@@ -621,163 +606,6 @@ public class WebAnnoCasUtil
             throw new IllegalArgumentException("Cannot get value of feature [" + feature.getName()
                     + "] with type [" + feature.getRange().getName() + "]");
         }
-    }
-
-    /**
-     * Set a feature value.
-     *
-     * @param aFS
-     *            the feature structure.
-     * @param aFeature
-     *            the feature within the annotation whose value to set. If this parameter is
-     *            {@code null} then nothing happens.
-     * @param aValue
-     *            the feature value.
-     */
-    public static void setFeature(FeatureStructure aFS, AnnotationFeature aFeature, Object aValue)
-    {
-        if (aFeature == null) {
-            return;
-        }
-
-        Feature feature = aFS.getType().getFeatureByBaseName(aFeature.getName());
-
-        switch (aFeature.getMultiValueMode()) {
-        case NONE: {
-            String effectiveType = aFeature.getType();
-            if (effectiveType.contains(":")) {
-                effectiveType = CAS.TYPE_NAME_STRING;
-            }
-
-            // Sanity check
-            if (!Objects.equals(effectiveType, feature.getRange().getName())) {
-                throw new IllegalArgumentException("On [" + aFS.getType().getName() + "] feature ["
-                        + aFeature.getName() + "] actual type [" + feature.getRange().getName()
-                        + "] does not match expected feature type [" + effectiveType + "].");
-            }
-
-            switch (effectiveType) {
-            case CAS.TYPE_NAME_STRING:
-                aFS.setStringValue(feature, (String) aValue);
-                break;
-            case CAS.TYPE_NAME_BOOLEAN:
-                aFS.setBooleanValue(feature, aValue != null ? (boolean) aValue : false);
-                break;
-            case CAS.TYPE_NAME_FLOAT:
-                aFS.setFloatValue(feature, aValue != null ? (float) aValue : 0.0f);
-                break;
-            case CAS.TYPE_NAME_INTEGER:
-                aFS.setIntValue(feature, aValue != null ? (int) aValue : 0);
-                break;
-            default:
-                throw new IllegalArgumentException(
-                        "Cannot set value of feature [" + aFeature.getName() + "] with type ["
-                                + feature.getRange().getName() + "] to [" + aValue + "]");
-            }
-            break;
-        }
-        case ARRAY: {
-            switch (aFeature.getLinkMode()) {
-            case WITH_ROLE: {
-                // Get type and features - we need them later in the loop
-                setLinkFeature(aFS, aFeature, (List<LinkWithRoleModel>) aValue, feature);
-                break;
-            }
-            default:
-                throw new IllegalArgumentException("Unsupported link mode ["
-                        + aFeature.getLinkMode() + "] on feature [" + aFeature.getName() + "]");
-            }
-            break;
-        }
-        default:
-            throw new IllegalArgumentException("Unsupported multi-value mode ["
-                    + aFeature.getMultiValueMode() + "] on feature [" + aFeature.getName() + "]");
-        }
-    }
-
-    private static void setLinkFeature(FeatureStructure aFS, AnnotationFeature aFeature,
-            List<LinkWithRoleModel> aValue, Feature feature)
-    {
-        Type linkType = aFS.getCAS().getTypeSystem().getType(aFeature.getLinkTypeName());
-        Feature roleFeat = linkType.getFeatureByBaseName(aFeature.getLinkTypeRoleFeatureName());
-        Feature targetFeat = linkType.getFeatureByBaseName(aFeature.getLinkTypeTargetFeatureName());
-
-        // Create all the links
-        // FIXME: actually we could re-use existing link link feature structures
-        List<FeatureStructure> linkFSes = new ArrayList<>();
-
-        if (aValue != null) {
-            // remove duplicate links
-            Set<LinkWithRoleModel> links = new HashSet<>(aValue);
-            for (LinkWithRoleModel e : links) {
-                // Skip links that have been added in the UI but where the target has not
-                // yet been
-                // set
-                if (e.targetAddr == -1) {
-                    continue;
-                }
-
-                FeatureStructure link = aFS.getCAS().createFS(linkType);
-                link.setStringValue(roleFeat, e.role);
-                link.setFeatureValue(targetFeat, selectFsByAddr(aFS.getCAS(), e.targetAddr));
-                linkFSes.add(link);
-            }
-        }
-        setLinkFeatureValue(aFS, feature, linkFSes);
-
-    }
-
-    public static void setLinkFeatureValue(FeatureStructure aFS, Feature aFeature,
-            List<FeatureStructure> linkFSes)
-    {
-        // Create a new array if size differs otherwise re-use existing one
-        ArrayFS array = (ArrayFS) WebAnnoCasUtil.getFeatureFS(aFS, aFeature.getShortName());
-        if (array == null || (array.size() != linkFSes.size())) {
-            array = aFS.getCAS().createArrayFS(linkFSes.size());
-        }
-
-        // Fill in links
-        array.copyFromArray(linkFSes.toArray(new FeatureStructure[linkFSes.size()]), 0, 0,
-                linkFSes.size());
-
-        aFS.setFeatureValue(aFeature, array);
-    }
-
-    /**
-     * Set a feature value.
-     *
-     * @param aFS
-     *            the feature structure.
-     * @param aFeatureName
-     *            the feature within the annotation whose value to set.
-     * @param aValue
-     *            the feature value.
-     */
-    public static void setFeatureFS(FeatureStructure aFS, String aFeatureName,
-            FeatureStructure aValue)
-    {
-        Feature labelFeature = aFS.getType().getFeatureByBaseName(aFeatureName);
-        aFS.setFeatureValue(labelFeature, aValue);
-    }
-
-    /**
-     * Get a feature value.
-     *
-     * @param aFS
-     *            the feature structure.
-     * @param aFeatureName
-     *            the feature within the annotation whose value to set.
-     * @return the feature value.
-     */
-    public static FeatureStructure getFeatureFS(FeatureStructure aFS, String aFeatureName)
-    {
-        return aFS.getFeatureValue(aFS.getType().getFeatureByBaseName(aFeatureName));
-    }
-
-    public static boolean isRequiredFeatureMissing(AnnotationFeature aFeature, FeatureStructure aFS)
-    {
-        return aFeature.isRequired() && CAS.TYPE_NAME_STRING.equals(aFeature.getType())
-                && StringUtils.isBlank(FSUtil.getFeature(aFS, aFeature.getName(), String.class));
     }
 
     public static FeatureStructure createDocumentMetadata(CAS aCas)
@@ -885,5 +713,12 @@ public class WebAnnoCasUtil
         catch (IllegalArgumentException e) {
             return null;
         }
+    }
+
+    public static Set<FeatureStructure> findAllFeatureStructures(CAS aCas)
+    {
+        Set<FeatureStructure> allFSes = new LinkedHashSet<>();
+        ((CASImpl) aCas).walkReachablePlusFSsSorted(allFSes::add, null, null, null);
+        return allFSes;
     }
 }

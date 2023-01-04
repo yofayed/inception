@@ -18,13 +18,14 @@
 package de.tudarmstadt.ukp.inception.kb.model;
 
 import static de.tudarmstadt.ukp.inception.kb.reification.Reification.NONE;
-import static java.util.Collections.emptyList;
+import static java.util.Collections.emptySet;
 import static org.apache.commons.lang3.StringUtils.isEmpty;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 
 import javax.persistence.CollectionTable;
 import javax.persistence.Column;
@@ -35,6 +36,7 @@ import javax.persistence.Enumerated;
 import javax.persistence.FetchType;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
+import javax.persistence.Lob;
 import javax.persistence.ManyToOne;
 import javax.persistence.NamedQueries;
 import javax.persistence.NamedQuery;
@@ -157,6 +159,9 @@ public class KnowledgeBase
     @Column(nullable = false)
     private boolean readOnly;
 
+    @Column(nullable = false)
+    private boolean useFuzzy;
+
     /**
      * Whether the kb is available in the UI (outside of the project settings).
      */
@@ -179,7 +184,12 @@ public class KnowledgeBase
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "knowledgebase_root_classes")
     @Column(name = "name")
-    private List<String> rootConcepts = new ArrayList<>();
+    private Set<String> rootConcepts = new LinkedHashSet<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "knowledgebase_add_match_props")
+    @Column(name = "name")
+    private Set<String> additionalMatchingProperties = new LinkedHashSet<>();
 
     /**
      * The default language for labels and descriptions of KB elements
@@ -192,6 +202,16 @@ public class KnowledgeBase
      */
     @Column(nullable = false)
     private int maxResults;
+
+    /**
+     * Whether to prevent the validation of the SSL certificate of a remote knowledge base
+     */
+    @Column(nullable = false)
+    private boolean skipSslValidation = false;
+
+    @Lob
+    @Column(length = 64000)
+    private String traits;
 
     public String getRepositoryId()
     {
@@ -397,14 +417,14 @@ public class KnowledgeBase
         basePrefix = aBasePrefix;
     }
 
-    public List<String> getRootConcepts()
+    public Set<String> getRootConcepts()
     {
         return rootConcepts;
     }
 
-    public void setRootConcepts(List<String> aExplicitlyDefinedRootConcepts)
+    public void setRootConcepts(Collection<String> aExplicitlyDefinedRootConcepts)
     {
-        rootConcepts = new ArrayList<>(aExplicitlyDefinedRootConcepts);
+        rootConcepts = new LinkedHashSet<>(aExplicitlyDefinedRootConcepts);
     }
 
     public int getMaxResults()
@@ -433,10 +453,21 @@ public class KnowledgeBase
     public void applyRootConcepts(KnowledgeBaseProfile aProfile)
     {
         if (aProfile.getRootConcepts() == null) {
-            rootConcepts = emptyList();
+            rootConcepts = emptySet();
         }
         else {
-            rootConcepts = new ArrayList<>(aProfile.getRootConcepts());
+            rootConcepts = new LinkedHashSet<>(aProfile.getRootConcepts());
+        }
+    }
+
+    public void applyAdditionalMatchingProperties(KnowledgeBaseProfile aProfile)
+    {
+        if (aProfile.getAdditionalMatchingProperties() == null) {
+            additionalMatchingProperties = emptySet();
+        }
+        else {
+            additionalMatchingProperties = new LinkedHashSet<>(
+                    aProfile.getAdditionalMatchingProperties());
         }
     }
 
@@ -448,6 +479,46 @@ public class KnowledgeBase
     public void setDefaultDatasetIri(String aDefaultDatasetIri)
     {
         defaultDatasetIri = aDefaultDatasetIri;
+    }
+
+    public void setSkipSslValidation(boolean aSkipSslValidation)
+    {
+        skipSslValidation = aSkipSslValidation;
+    }
+
+    public boolean isSkipSslValidation()
+    {
+        return skipSslValidation;
+    }
+
+    public void setAdditionalMatchingProperties(Collection<String> aProperties)
+    {
+        additionalMatchingProperties = new LinkedHashSet<>(aProperties);
+    }
+
+    public Set<String> getAdditionalMatchingProperties()
+    {
+        return additionalMatchingProperties;
+    }
+
+    public boolean isUseFuzzy()
+    {
+        return useFuzzy;
+    }
+
+    public void setUseFuzzy(boolean aUseFuzzy)
+    {
+        useFuzzy = aUseFuzzy;
+    }
+
+    public String getTraits()
+    {
+        return traits;
+    }
+
+    public void setTraits(String aTraits)
+    {
+        traits = aTraits;
     }
 
     @Override

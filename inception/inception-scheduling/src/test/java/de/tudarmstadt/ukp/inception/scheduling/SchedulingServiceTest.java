@@ -23,14 +23,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.mockito.MockitoAnnotations.initMocks;
 
 import java.util.List;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.context.ApplicationContext;
 
@@ -38,27 +39,23 @@ import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
 import de.tudarmstadt.ukp.inception.scheduling.config.SchedulingProperties;
 
+@ExtendWith(MockitoExtension.class)
 public class SchedulingServiceTest
 {
+    private @Mock ApplicationContext mockContext;
 
-    @Mock
-    private ApplicationContext mockContext;
+    private SchedulingServiceImpl sut;
 
-    private List<Task> executedTasks;
-
-    private SchedulingService sut;
-
-    @Before
+    @BeforeEach
     public void setUp()
     {
-        initMocks(this);
         when(mockContext.getAutowireCapableBeanFactory())
                 .thenReturn(mock(AutowireCapableBeanFactory.class));
 
-        sut = new SchedulingService(mockContext, new SchedulingProperties());
+        sut = new SchedulingServiceImpl(mockContext, new SchedulingProperties(), null);
     }
 
-    @After
+    @AfterEach
     public void tearDown()
     {
         sut.destroy();
@@ -67,8 +64,10 @@ public class SchedulingServiceTest
     @Test
     public void thatRunningTasksCanBeRetrieved()
     {
-        List<Task> tasks = asList(buildDummyTask("user1", "project1"),
-                buildDummyTask("user1", "project2"), buildDummyTask("user2", "project1"));
+        List<Task> tasks = asList( //
+                buildDummyTask("user1", "project1"), //
+                buildDummyTask("user1", "project2"), //
+                buildDummyTask("user2", "project1"));
 
         for (Task task : tasks) {
             sut.enqueue(task);
@@ -77,27 +76,31 @@ public class SchedulingServiceTest
         // Wait until the threads have actually been started
         await().atMost(15, SECONDS).until(() -> sut.getRunningTasks().size() == tasks.size());
 
-        assertThat(sut.getRunningTasks()).as("All enqueued tasks should be running")
+        assertThat(sut.getRunningTasks()) //
+                .as("All enqueued tasks should be running")
                 .containsExactlyInAnyOrderElementsOf(tasks);
     }
 
     @Test
     public void thatTasksForUserCanBeStopped()
     {
-        List<Task> tasks = asList(buildDummyTask("testUser", "project1"),
-                buildDummyTask("unimportantUser1", "project1"),
-                buildDummyTask("unimportantUser2", "project2"),
-                buildDummyTask("unimportantUser3", "project3"),
-                buildDummyTask("testUser", "project2"),
-                buildDummyTask("unimportantUser4", "project4"),
-                buildDummyTask("testUser", "project3"),
-                buildDummyTask("unimportantUser1", "project2"),
-                buildDummyTask("testUser", "project4"),
-                buildDummyTask("unimportantUser2", "project3"),
-                buildDummyTask("unimportantUser3", "project4"),
-                buildDummyTask("testUser", "project2"), buildDummyTask("testUser", "project2"));
+        List<Task> tasks = asList( //
+                buildDummyTask("testUser", "project1"), //
+                buildDummyTask("unimportantUser1", "project1"), //
+                buildDummyTask("unimportantUser2", "project2"), //
+                buildDummyTask("unimportantUser3", "project3"), //
+                buildDummyTask("testUser", "project2"), //
+                buildDummyTask("unimportantUser4", "project4"), //
+                buildDummyTask("testUser", "project3"), //
+                buildDummyTask("unimportantUser1", "project2"), //
+                buildDummyTask("testUser", "project4"), //
+                buildDummyTask("unimportantUser2", "project3"), //
+                buildDummyTask("unimportantUser3", "project4"), //
+                buildDummyTask("testUser", "project2"), //
+                buildDummyTask("testUser", "project2"));
         Task[] tasksToRemove = tasks.stream()
-                .filter(t -> t.getUser().getUsername().equals("testUser")).toArray(Task[]::new);
+                .filter(t -> t.getUser().get().getUsername().equals("testUser"))
+                .toArray(Task[]::new);
 
         for (Task task : tasks) {
             sut.enqueue(task);
@@ -117,6 +120,7 @@ public class SchedulingServiceTest
     private Project buildProject(String aProjectName)
     {
         Project project = new Project();
+        project.setSlug(aProjectName);
         project.setName(aProjectName);
         return project;
     }
@@ -139,7 +143,7 @@ public class SchedulingServiceTest
         }
 
         @Override
-        public void run()
+        public void execute()
         {
             while (!Thread.currentThread().isInterrupted()) {
                 try {

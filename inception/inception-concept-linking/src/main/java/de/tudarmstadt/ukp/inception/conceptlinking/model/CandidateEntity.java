@@ -41,11 +41,20 @@ public class CandidateEntity
      * The query entered by the user.
      */
     public static final Key<String> KEY_QUERY = new Key<>("query");
+    public static final Key<String> KEY_QUERY_NC = new Key<>("queryNC");
+
+    /**
+     * Whether the query entered by the user is completely in lower case.
+     */
+    public static final Key<Boolean> KEY_QUERY_IS_LOWER_CASE = new Key<>("queryIsLowerCase");
 
     /**
      * The mention in the text which is to be linked.
      */
     public static final Key<String> KEY_MENTION = new Key<>("mention");
+    public static final Key<String> KEY_MENTION_NC = new Key<>("mentionNC");
+
+    public static final Key<String> KEY_LABEL_NC = new Key<>("labelNC");
 
     /**
      * The context of the mention.
@@ -60,6 +69,9 @@ public class CandidateEntity
      * be calculated.
      */
     public static final Key<Integer> KEY_LEVENSHTEIN_MENTION = new Key<>("levMention",
+            Integer.MAX_VALUE);
+
+    public static final Key<Integer> KEY_LEVENSHTEIN_MENTION_NC = new Key<>("levMentionNC",
             Integer.MAX_VALUE);
 
     /**
@@ -80,6 +92,9 @@ public class CandidateEntity
      * be calculated.
      */
     public static final Key<Integer> KEY_LEVENSHTEIN_QUERY = new Key<>("levQuery",
+            Integer.MAX_VALUE);
+
+    public static final Key<Integer> KEY_LEVENSHTEIN_QUERY_NC = new Key<>("levQueryNC",
             Integer.MAX_VALUE);
 
     /**
@@ -158,7 +173,7 @@ public class CandidateEntity
     }
 
     /**
-     * Get a description for this entity
+     * @return the description for this entity
      */
     public String getDescription()
     {
@@ -170,6 +185,7 @@ public class CandidateEntity
         return handle.getLanguage();
     }
 
+    @SuppressWarnings("unchecked")
     public <T> Optional<T> get(Key<T> aKey)
     {
         return Optional.ofNullable((T) features.getOrDefault(aKey.name, aKey.getDefaultValue()));
@@ -177,6 +193,15 @@ public class CandidateEntity
 
     /**
      * Same as {@link #put} except that it is fluent.
+     * 
+     * @param aKey
+     *            a key.
+     * @param aValue
+     *            a value.
+     * @param <T>
+     *            the value type.
+     * 
+     * @return object for chaining.
      */
     public <T> CandidateEntity with(Key<T> aKey, T aValue)
     {

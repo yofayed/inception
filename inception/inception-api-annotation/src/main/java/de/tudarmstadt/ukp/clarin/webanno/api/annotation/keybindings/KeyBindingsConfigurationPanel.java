@@ -37,15 +37,15 @@ import org.apache.wicket.validation.IValidatable;
 import org.apache.wicket.validation.IValidator;
 import org.apache.wicket.validation.ValidationError;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupport;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupportRegistry;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.editor.FeatureEditor;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.FeatureState;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.VID;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxLink;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxSubmitLink;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.FeatureState;
+import de.tudarmstadt.ukp.inception.rendering.vmodel.VID;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureEditor;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupport;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupportRegistry;
 
 /**
  * Can be added to a feature support traits editor to configure key bindings.
@@ -85,7 +85,7 @@ public class KeyBindingsConfigurationPanel
         keyBindingsContainer.add(new LambdaAjaxSubmitLink<>("addKeyBinding", this::addKeyBinding));
 
         AnnotationFeature feature = aModel.getObject();
-        FeatureSupport<?> fs = featureSupportRegistry.getFeatureSupport(feature);
+        FeatureSupport<?> fs = featureSupportRegistry.findExtension(feature).orElseThrow();
         featureState = Model.of(new FeatureState(VID.NONE_ID, feature, null));
         if (feature.getTagset() != null) {
             featureState.getObject().tagset = schemaService
@@ -113,11 +113,11 @@ public class KeyBindingsConfigurationPanel
             protected void populateItem(ListItem<KeyBinding> aItem)
             {
                 AnnotationFeature feature = KeyBindingsConfigurationPanel.this.getModelObject();
-                FeatureSupport<?> fs = featureSupportRegistry.getFeatureSupport(feature);
+                FeatureSupport<?> fs = featureSupportRegistry.findExtension(feature).orElseThrow();
 
                 KeyBinding keyBinding = aItem.getModelObject();
 
-                aItem.add(new Label("keyCombo", keyBinding.asHtml()).setEscapeModelStrings(false));
+                aItem.add(new KeybindingLabel("keyCombo", keyBinding));
 
                 aItem.add(
                         new Label("value", fs.renderFeatureValue(feature, keyBinding.getValue())));
@@ -145,7 +145,7 @@ public class KeyBindingsConfigurationPanel
         // Copy value from the value editor over into the form model (key binding) and then add it
         // to the list
         AnnotationFeature feature = getModelObject();
-        FeatureSupport<?> fs = featureSupportRegistry.getFeatureSupport(feature);
+        FeatureSupport<?> fs = featureSupportRegistry.findExtension(feature).orElseThrow();
         keyBinding.setValue(fs.unwrapFeatureValue(feature, null, featureState.getObject().value));
         keyBindings.getObject().add(keyBinding);
 

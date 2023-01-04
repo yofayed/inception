@@ -25,8 +25,11 @@ import java.util.Optional;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocument;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
 import de.tudarmstadt.ukp.inception.search.ExecutionException;
+import de.tudarmstadt.ukp.inception.search.LayerStatistics;
 import de.tudarmstadt.ukp.inception.search.SearchQueryRequest;
 import de.tudarmstadt.ukp.inception.search.SearchResult;
+import de.tudarmstadt.ukp.inception.search.StatisticRequest;
+import de.tudarmstadt.ukp.inception.search.StatisticsResult;
 
 public interface PhysicalIndex
 {
@@ -40,10 +43,13 @@ public interface PhysicalIndex
      * is closed before.
      * 
      * @throws IOException
+     *             if there was an I/O-level problem
      */
     void delete() throws IOException;
 
     boolean isOpen();
+
+    void open() throws IOException;
 
     void close();
 
@@ -53,10 +59,20 @@ public interface PhysicalIndex
     long numberOfQueryResults(SearchQueryRequest aSearchQueryRequest)
         throws IOException, ExecutionException;
 
+    public LayerStatistics getLayerStatistics(StatisticRequest aStatisticRequest,
+            String aFeatureQuery, List<Integer> aFullDocSet)
+        throws IOException, ExecutionException;
+
+    public List<Integer> getUniqueDocuments(StatisticRequest aStatisticRequest) throws IOException;
+
+    public StatisticsResult getAnnotationStatistics(StatisticRequest aStatisticRequest)
+        throws IOException, ExecutionException;
+
     void deindexDocument(SourceDocument aDocument) throws IOException;
 
     void deindexDocument(AnnotationDocument aDocument) throws IOException;
 
+    @Deprecated
     void deindexDocument(AnnotationDocument aDocument, String aTimestamp) throws IOException;
 
     void indexDocument(AnnotationDocument aDocument, byte[] aBinaryCas) throws IOException;
@@ -73,6 +89,7 @@ public interface PhysicalIndex
      * @return The first found document timestamp field value. Empty string if document is not
      *         found.
      * @throws IOException
+     *             if there was an I/O-level problem
      */
     public Optional<String> getTimestamp(long aSrcDocId, long aAnnoDocId) throws IOException;
 

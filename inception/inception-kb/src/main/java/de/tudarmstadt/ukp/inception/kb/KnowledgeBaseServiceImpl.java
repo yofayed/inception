@@ -17,22 +17,25 @@
  */
 package de.tudarmstadt.ukp.inception.kb;
 
-import static de.tudarmstadt.ukp.inception.kb.querybuilder.Path.zeroOrMore;
+import static de.tudarmstadt.ukp.clarin.webanno.api.ProjectService.withProjectLogger;
+import static de.tudarmstadt.ukp.inception.kb.http.PerThreadSslCheckingHttpClientUtils.restoreSslVerification;
+import static de.tudarmstadt.ukp.inception.kb.http.PerThreadSslCheckingHttpClientUtils.skipCertificateChecks;
 import static de.tudarmstadt.ukp.inception.kb.querybuilder.SPARQLQueryBuilder.DEFAULT_LIMIT;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import static java.util.stream.Collectors.toList;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
+import static org.apache.commons.lang3.StringUtils.substringAfter;
+import static org.apache.commons.lang3.StringUtils.substringBefore;
 import static org.eclipse.rdf4j.sparqlbuilder.rdf.Rdf.iri;
 
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.Reader;
+import java.net.URI;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -48,10 +51,12 @@ import javax.persistence.TypedQuery;
 
 import org.apache.commons.compress.compressors.CompressorException;
 import org.apache.commons.compress.compressors.CompressorStreamFactory;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
-import org.apache.wicket.spring.injection.annot.SpringBean;
+import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.lucene.index.IndexFormatTooNewException;
 import org.eclipse.rdf4j.common.iteration.Iterations;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Statement;
@@ -62,9 +67,11 @@ import org.eclipse.rdf4j.query.BindingSet;
 import org.eclipse.rdf4j.query.QueryEvaluationException;
 import org.eclipse.rdf4j.query.TupleQuery;
 import org.eclipse.rdf4j.query.TupleQueryResult;
+import org.eclipse.rdf4j.repository.Repository;
 import org.eclipse.rdf4j.repository.RepositoryConnection;
 import org.eclipse.rdf4j.repository.RepositoryException;
 import org.eclipse.rdf4j.repository.RepositoryResult;
+import org.eclipse.rdf4j.repository.base.RepositoryConnectionWrapper;
 import org.eclipse.rdf4j.repository.config.RepositoryConfig;
 import org.eclipse.rdf4j.repository.config.RepositoryConfigException;
 import org.eclipse.rdf4j.repository.config.RepositoryImplConfig;
@@ -72,14 +79,17 @@ import org.eclipse.rdf4j.repository.manager.RepositoryManager;
 import org.eclipse.rdf4j.repository.manager.RepositoryProvider;
 import org.eclipse.rdf4j.repository.sail.SailRepository;
 import org.eclipse.rdf4j.repository.sail.config.SailRepositoryConfig;
+import org.eclipse.rdf4j.repository.sparql.SPARQLRepository;
 import org.eclipse.rdf4j.repository.sparql.config.SPARQLRepositoryConfig;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.rio.RDFParseException;
 import org.eclipse.rdf4j.rio.RDFWriter;
 import org.eclipse.rdf4j.rio.Rio;
+import org.eclipse.rdf4j.sail.SailException;
 import org.eclipse.rdf4j.sail.lucene.LuceneSail;
-import org.eclipse.rdf4j.sail.lucene.config.LuceneSailConfig;
+import org.eclipse.rdf4j.sail.lucene.impl.config.LuceneSailConfig;
 import org.eclipse.rdf4j.sail.nativerdf.config.NativeStoreConfig;
+import org.eclipse.rdf4j.sparqlbuilder.constraint.propertypath.builder.PropertyPathBuilder;
 import org.eclipse.rdf4j.sparqlbuilder.core.SparqlBuilder;
 import org.eclipse.rdf4j.sparqlbuilder.core.Variable;
 import org.eclipse.rdf4j.sparqlbuilder.core.query.Queries;
@@ -93,19 +103,19 @@ import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.http.HttpHeaders;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.RepositoryProperties;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupportRegistry;
+import de.tudarmstadt.ukp.clarin.webanno.api.config.RepositoryProperties;
+import de.tudarmstadt.ukp.clarin.webanno.api.event.BeforeProjectRemovedEvent;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
+import de.tudarmstadt.ukp.clarin.webanno.support.JSONUtil;
 import de.tudarmstadt.ukp.clarin.webanno.support.SettingsUtil;
 import de.tudarmstadt.ukp.clarin.webanno.support.StopWatch;
+import de.tudarmstadt.ukp.clarin.webanno.support.logging.BaseLoggers;
 import de.tudarmstadt.ukp.inception.kb.config.KnowledgeBaseProperties;
 import de.tudarmstadt.ukp.inception.kb.config.KnowledgeBaseServiceAutoConfiguration;
 import de.tudarmstadt.ukp.inception.kb.event.KnowledgeBaseConfigurationChangedEvent;
@@ -116,14 +126,20 @@ import de.tudarmstadt.ukp.inception.kb.graph.KBObject;
 import de.tudarmstadt.ukp.inception.kb.graph.KBProperty;
 import de.tudarmstadt.ukp.inception.kb.graph.KBQualifier;
 import de.tudarmstadt.ukp.inception.kb.graph.KBStatement;
+import de.tudarmstadt.ukp.inception.kb.http.PerThreadSslCheckingHttpClientUtils;
 import de.tudarmstadt.ukp.inception.kb.model.KnowledgeBase;
-import de.tudarmstadt.ukp.inception.kb.querybuilder.Path;
+import de.tudarmstadt.ukp.inception.kb.model.RemoteRepositoryTraits;
 import de.tudarmstadt.ukp.inception.kb.querybuilder.SPARQLQuery;
 import de.tudarmstadt.ukp.inception.kb.querybuilder.SPARQLQueryBuilder;
 import de.tudarmstadt.ukp.inception.kb.reification.NoReification;
 import de.tudarmstadt.ukp.inception.kb.reification.ReificationStrategy;
 import de.tudarmstadt.ukp.inception.kb.reification.WikiDataReification;
 import de.tudarmstadt.ukp.inception.kb.yaml.KnowledgeBaseProfile;
+import de.tudarmstadt.ukp.inception.security.client.auth.basic.BasicAuthenticationTraits;
+import de.tudarmstadt.ukp.inception.security.client.auth.oauth.MemoryOAuthSessionRepository;
+import de.tudarmstadt.ukp.inception.security.client.auth.oauth.OAuthAuthenticationClientImpl;
+import de.tudarmstadt.ukp.inception.security.client.auth.oauth.OAuthClientCredentialsAuthenticationTraits;
+import de.tudarmstadt.ukp.inception.security.client.auth.oauth.OAuthSessionImpl;
 
 /**
  * <p>
@@ -134,33 +150,24 @@ import de.tudarmstadt.ukp.inception.kb.yaml.KnowledgeBaseProfile;
 public class KnowledgeBaseServiceImpl
     implements KnowledgeBaseService, DisposableBean
 {
-    private static final String KNOWLEDGEBASE_PROFILES_YAML = "knowledgebase-profiles.yaml";
-
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     private @PersistenceContext EntityManager entityManager;
     private final RepositoryManager repoManager;
     private final File kbRepositoriesRoot;
-
-    private @SpringBean FeatureSupportRegistry featureSupportRegistry;
+    private final KnowledgeBaseProperties properties;
 
     private final LoadingCache<QueryKey, List<KBHandle>> queryCache;
+    private final MemoryOAuthSessionRepository<KnowledgeBase> oAuthSessionRepository;
 
     @Autowired
     public KnowledgeBaseServiceImpl(RepositoryProperties aRepoProperties,
             KnowledgeBaseProperties aKBProperties)
     {
-        Caffeine<QueryKey, List<KBHandle>> cacheBuilder = Caffeine.newBuilder()
-                .maximumWeight(aKBProperties.getCacheSize())
-                .expireAfterAccess(aKBProperties.getCacheExpireDelay())
-                .refreshAfterWrite(aKBProperties.getCacheRefreshDelay())
-                .weigher((QueryKey key, List<KBHandle> value) -> value.size());
+        properties = aKBProperties;
 
-        if (log.isTraceEnabled()) {
-            cacheBuilder.recordStats();
-        }
-
-        queryCache = cacheBuilder.build(this::runQuery);
+        queryCache = createQueryCache(aKBProperties);
+        oAuthSessionRepository = new MemoryOAuthSessionRepository<>();
 
         kbRepositoriesRoot = new File(aRepoProperties.getPath(), "kb");
 
@@ -190,7 +197,26 @@ public class KnowledgeBaseServiceImpl
         }
 
         repoManager = RepositoryProvider.getRepositoryManager(kbRepositoriesRoot);
-        log.info("Knowledge base repository path: {}", kbRepositoriesRoot);
+        repoManager.setHttpClient(PerThreadSslCheckingHttpClientUtils
+                .newPerThreadSslCheckingHttpClientBuilder().build());
+
+        BaseLoggers.BOOT_LOG.info("Knowledge base repository path: {}", kbRepositoriesRoot);
+    }
+
+    private LoadingCache<QueryKey, List<KBHandle>> createQueryCache(
+            KnowledgeBaseProperties aKBProperties)
+    {
+        Caffeine<QueryKey, List<KBHandle>> queryCacheBuilder = Caffeine.newBuilder()
+                .maximumWeight(aKBProperties.getCacheSize())
+                .expireAfterAccess(aKBProperties.getCacheExpireDelay())
+                .refreshAfterWrite(aKBProperties.getCacheRefreshDelay())
+                .weigher((QueryKey key, List<KBHandle> value) -> value.size());
+
+        if (log.isTraceEnabled()) {
+            queryCacheBuilder.recordStats();
+        }
+
+        return queryCacheBuilder.build(this::runQuery);
     }
 
     public KnowledgeBaseServiceImpl(RepositoryProperties aRepoProperties,
@@ -228,8 +254,15 @@ public class KnowledgeBaseServiceImpl
         }
 
         if (!orphanedIDs.isEmpty()) {
-            log.info("Found orphaned KB repositories: {}",
-                    orphanedIDs.stream().sorted().collect(Collectors.toList()));
+            log.info("Found [{}] orphaned KB repositories: {}", orphanedIDs.size(),
+                    orphanedIDs.stream().sorted().collect(toList()));
+
+            if (properties.isRemoveOrphansOnStart()) {
+                for (String id : orphanedIDs) {
+                    repoManager.removeRepository(id);
+                    log.info("Deleted orphaned KB repository: {}", id);
+                }
+            }
         }
 
         repoManager.refresh();
@@ -336,6 +369,9 @@ public class KnowledgeBaseServiceImpl
         throws RepositoryException, RepositoryConfigException
     {
         assertRegistration(kb);
+        // We clear any current OAuth session on the repository because we do not know if maybe
+        // the user has changed the repository URL / credentials as part of the update...
+        oAuthSessionRepository.clear(kb);
         entityManager.merge(kb);
     }
 
@@ -346,7 +382,7 @@ public class KnowledgeBaseServiceImpl
     {
         assertRegistration(kb);
         repoManager.addRepositoryConfig(new RepositoryConfig(kb.getRepositoryId(), cfg));
-        entityManager.merge(kb);
+        updateKnowledgeBase(kb);
     }
 
     @SuppressWarnings("unchecked")
@@ -387,6 +423,8 @@ public class KnowledgeBaseServiceImpl
     {
         assertRegistration(aKB);
 
+        oAuthSessionRepository.clear(aKB);
+
         repoManager.removeRepository(aKB.getRepositoryId());
 
         entityManager.remove(entityManager.contains(aKB) ? aKB : entityManager.merge(aKB));
@@ -416,14 +454,126 @@ public class KnowledgeBaseServiceImpl
         throws RepositoryConfigException, RepositoryException
     {
         assertRegistration(kb);
-        return repoManager.getRepositoryConfig(kb.getRepositoryId()).getRepositoryImplConfig();
+        var repositoryConfig = repoManager.getRepositoryConfig(kb.getRepositoryId());
+        if (repositoryConfig == null) {
+            return null;
+        }
+        return repositoryConfig.getRepositoryImplConfig();
     }
 
     @Override
     public RepositoryConnection getConnection(KnowledgeBase kb)
     {
         assertRegistration(kb);
-        return repoManager.getRepository(kb.getRepositoryId()).getConnection();
+        Repository repo = repoManager.getRepository(kb.getRepositoryId());
+
+        if (repo instanceof SPARQLRepository) {
+            SPARQLRepositoryConfig sparqlRepoConfig = (SPARQLRepositoryConfig) getKnowledgeBaseConfig(
+                    kb);
+            SPARQLRepository sparqlRepo = (SPARQLRepository) repo;
+            applyBasicHttpAuthenticationConfigurationFromUrl(sparqlRepoConfig, sparqlRepo);
+            RemoteRepositoryTraits traits = readTraits(kb);
+
+            if (traits != null && traits.getAuthentication() != null) {
+                switch (traits.getAuthentication().getType()) {
+                case BASIC: {
+                    applyBasicHttpAuthenticationConfiguration(sparqlRepo, traits);
+                    break;
+                }
+                case OAUTH_CLIENT_CREDENTIALS: {
+                    applyOAuthConfiguration(kb, sparqlRepo, traits);
+                    break;
+                }
+                }
+            }
+        }
+
+        return new RepositoryConnectionWrapper(repo, repo.getConnection())
+        {
+            {
+                skipCertificateChecks(kb.isSkipSslValidation());
+            }
+
+            @Override
+            public void close() throws RepositoryException
+            {
+                try {
+                    super.close();
+                }
+                finally {
+                    restoreSslVerification();
+                }
+            };
+        };
+    }
+
+    private RemoteRepositoryTraits readTraits(KnowledgeBase kb)
+    {
+        try {
+            return JSONUtil.fromJsonString(RemoteRepositoryTraits.class, kb.getTraits());
+        }
+        catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private void applyBasicHttpAuthenticationConfiguration(SPARQLRepository sparqlRepo,
+            RemoteRepositoryTraits traits)
+    {
+        var auth = (BasicAuthenticationTraits) traits.getAuthentication();
+        sparqlRepo.setUsernameAndPassword(auth.getUsername(), auth.getPassword());
+    }
+
+    private void applyOAuthConfiguration(KnowledgeBase kb, SPARQLRepository sparqlRepo,
+            RemoteRepositoryTraits traits)
+    {
+        var auth = (OAuthClientCredentialsAuthenticationTraits) traits.getAuthentication();
+        var client = OAuthAuthenticationClientImpl.builder() //
+                .withClientId(auth.getClientId()) //
+                .withClientSecret(auth.getClientSecret()) //
+                .withTokenEndpointUrl(auth.getTokenEndpointUrl()) //
+                .build();
+
+        // Check if there is already a session we can use
+        var session = oAuthSessionRepository.get(kb, _kb -> {
+            log.debug("[{}] Creating new OAuth session as [{}]...", _kb, auth.getClientId());
+            var _session = new OAuthSessionImpl(client.getToken());
+            log.debug("[{}] OAuth session as [{}] will expire in [{}]", _kb, auth.getClientId(),
+                    _session.getAccessTokenExpiresIn());
+            return _session;
+        });
+
+        try {
+            client.refreshSessionIfNecessary(session);
+        }
+        catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+
+        var headers = Map.of(HttpHeaders.AUTHORIZATION, "Bearer " + session.getAccessToken());
+        sparqlRepo.setAdditionalHttpHeaders(headers);
+    }
+
+    private void applyBasicHttpAuthenticationConfigurationFromUrl(
+            SPARQLRepositoryConfig sparqlRepoConfig, SPARQLRepository sparqlRepo)
+    {
+        URI uri = URI.create(sparqlRepoConfig.getQueryEndpointUrl());
+        String userInfo = uri.getUserInfo();
+        if (isNotBlank(userInfo)) {
+            userInfo = userInfo.trim();
+            String username;
+            String password;
+            if (userInfo.contains(":")) {
+                username = substringBefore(userInfo, ":");
+                password = substringAfter(userInfo, ":");
+            }
+            else {
+                username = userInfo;
+                password = "";
+            }
+
+            sparqlRepo.setUsernameAndPassword(username, password);
+        }
     }
 
     @SuppressWarnings("resource")
@@ -528,7 +678,7 @@ public class KnowledgeBaseServiceImpl
     @Override
     public Optional<KBConcept> readConcept(Project aProject, String aIdentifier)
     {
-        for (KnowledgeBase kb : getKnowledgeBases(aProject)) {
+        for (KnowledgeBase kb : getEnabledKnowledgeBases(aProject)) {
             Optional<KBConcept> concept = readConcept(kb, aIdentifier, true);
             if (concept.isPresent()) {
                 return concept;
@@ -705,7 +855,7 @@ public class KnowledgeBaseServiceImpl
     @Override
     public Optional<KBInstance> readInstance(Project aProject, String aIdentifier)
     {
-        for (KnowledgeBase kb : getKnowledgeBases(aProject)) {
+        for (KnowledgeBase kb : getEnabledKnowledgeBases(aProject)) {
             Optional<KBInstance> instance = readInstance(kb, aIdentifier);
             if (instance.isPresent()) {
                 return instance;
@@ -1031,13 +1181,7 @@ public class KnowledgeBaseServiceImpl
     @Override
     public Map<String, KnowledgeBaseProfile> readKnowledgeBaseProfiles() throws IOException
     {
-        try (Reader r = new InputStreamReader(
-                getClass().getResourceAsStream(KNOWLEDGEBASE_PROFILES_YAML), UTF_8)) {
-            ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-            return mapper.readValue(r, new TypeReference<HashMap<String, KnowledgeBaseProfile>>()
-            {
-            });
-        }
+        return KnowledgeBaseProfile.readKnowledgeBaseProfiles();
     }
 
     /**
@@ -1082,8 +1226,10 @@ public class KnowledgeBaseServiceImpl
     public Optional<KBHandle> readHandle(KnowledgeBase aKB, String aIdentifier)
     {
         try (StopWatch watch = new StopWatch(log, "readHandle(%s)", aIdentifier)) {
-            SPARQLQuery query = SPARQLQueryBuilder.forItems(aKB).withIdentifier(aIdentifier)
-                    .retrieveLabel();
+            SPARQLQuery query = SPARQLQueryBuilder.forItems(aKB) //
+                    .withIdentifier(aIdentifier) //
+                    .retrieveLabel() //
+                    .retrieveDescription();
 
             Optional<KBHandle> result;
             if (aKB.isReadOnly()) {
@@ -1102,7 +1248,7 @@ public class KnowledgeBaseServiceImpl
     {
         Optional<KBHandle> someResult = Optional.empty();
 
-        for (KnowledgeBase kb : getKnowledgeBases(aProject)) {
+        for (KnowledgeBase kb : getEnabledKnowledgeBases(aProject)) {
             Optional<KBHandle> concept = readHandle(kb, aIdentifier);
             if (!concept.isPresent()) {
                 continue;
@@ -1145,11 +1291,13 @@ public class KnowledgeBaseServiceImpl
             List<GraphPattern> patterns = new ArrayList<>();
             if (aClassInstance) {
                 Iri pSubProperty = iri(aKB.getSubPropertyIri());
-                patterns.add(property.has(Path.of(zeroOrMore(pSubProperty)), pLabel));
+                patterns.add(property.has(PropertyPathBuilder.of(pSubProperty).zeroOrMore().build(),
+                        pLabel));
             }
             if (aProperties) {
                 Iri pPropertyLabel = iri(aKB.getPropertyLabelIri());
-                patterns.add(property.has(Path.of(zeroOrMore(pPropertyLabel)), pLabel));
+                patterns.add(property
+                        .has(PropertyPathBuilder.of(pPropertyLabel).zeroOrMore().build(), pLabel));
             }
 
             query.where(GraphPatterns.union(patterns.stream().toArray(GraphPattern[]::new)));
@@ -1201,7 +1349,7 @@ public class KnowledgeBaseServiceImpl
                 || propertyIdentifier.equals(aKB.getTypeIri());
     }
 
-    private void reconfigureLocalKnowledgeBase(KnowledgeBase aKB)
+    void reconfigureLocalKnowledgeBase(KnowledgeBase aKB)
     {
         /*
         // @formatter:off
@@ -1246,25 +1394,40 @@ public class KnowledgeBaseServiceImpl
             throw new IllegalArgumentException("Reindexing is only supported on local KBs");
         }
 
-        boolean reindexSupported = false;
+        var repo = repoManager.getRepository(aKB.getRepositoryId());
 
-        // Handle re-indexing of local repos that use a Lucene FTS
-        if (repoManager.getRepository(aKB.getRepositoryId()) instanceof SailRepository) {
-            SailRepository sailRepo = (SailRepository) repoManager
-                    .getRepository(aKB.getRepositoryId());
-            if (sailRepo.getSail() instanceof LuceneSail) {
-                reindexSupported = true;
-                LuceneSail luceneSail = (LuceneSail) (sailRepo.getSail());
+        if (!(repo instanceof SailRepository)) {
+            throw new IllegalArgumentException(
+                    "Reindexing is not supported on [" + repo.getClass() + "] repositories");
+        }
+
+        var sail = ((SailRepository) repo).getSail();
+        if (!(sail instanceof LuceneSail)) {
+            throw new IllegalArgumentException(
+                    "Reindexing is not supported on [" + sail.getClass() + "] repositories");
+        }
+
+        var luceneSail = (LuceneSail) sail;
+        try (RepositoryConnection conn = getConnection(aKB)) {
+            luceneSail.reindex();
+            conn.commit();
+        }
+        catch (SailException e) {
+            if (ExceptionUtils.hasCause(e, IndexFormatTooNewException.class)) {
+                log.warn("Unable to access index: {}", e.getMessage());
+                log.info("Downgrade detected - trying to rebuild index from scratch...");
+
+                String luceneDir = luceneSail.getParameter(LuceneSail.LUCENE_DIR_KEY);
+                luceneSail.shutDown();
+                FileUtils.deleteQuietly(new File(luceneDir));
+                luceneSail.init();
+
+                // Only try to rebuild once - so no recursion here!
                 try (RepositoryConnection conn = getConnection(aKB)) {
                     luceneSail.reindex();
                     conn.commit();
                 }
             }
-        }
-
-        if (!reindexSupported) {
-            throw new IllegalArgumentException(
-                    aKB + "] does not support rebuilding its full text index.");
         }
     }
 
@@ -1319,6 +1482,21 @@ public class KnowledgeBaseServiceImpl
         queryCache.asMap().keySet().stream()
                 .filter(key -> key.kb.getProject().equals(aEvent.getProject()))
                 .forEach(key -> queryCache.invalidate(key));
+    }
+
+    @EventListener
+    @Transactional
+    public void onBeforeProjectRemovedEvent(BeforeProjectRemovedEvent aEvent)
+    {
+        Project project = aEvent.getProject();
+
+        for (KnowledgeBase kb : getKnowledgeBases(project)) {
+            removeKnowledgeBase(kb);
+        }
+
+        try (var logCtx = withProjectLogger(project)) {
+            log.info("Removed all knowledge bases from project {} being deleted", project);
+        }
     }
 
     private static final class QueryKey

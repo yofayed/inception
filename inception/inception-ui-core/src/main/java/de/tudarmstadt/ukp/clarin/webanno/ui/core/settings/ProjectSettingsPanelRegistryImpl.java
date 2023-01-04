@@ -17,8 +17,10 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.ui.core.settings;
 
+import static de.tudarmstadt.ukp.clarin.webanno.support.logging.BaseLoggers.BOOT_LOG;
+import static java.util.Collections.unmodifiableList;
+
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import org.apache.commons.lang3.ClassUtils;
@@ -62,12 +64,14 @@ public class ProjectSettingsPanelRegistryImpl
             AnnotationAwareOrderComparator.sort(exts);
 
             for (ProjectSettingsPanelFactory fs : exts) {
-                log.info("Found project setting panel: {}",
+                log.debug("Found project setting panel: {}",
                         ClassUtils.getAbbreviatedName(fs.getClass(), 20));
             }
         }
 
-        extensions = Collections.unmodifiableList(exts);
+        BOOT_LOG.info("Found [{}] project setting panels", exts.size());
+
+        extensions = unmodifiableList(exts);
     }
 
     @Override

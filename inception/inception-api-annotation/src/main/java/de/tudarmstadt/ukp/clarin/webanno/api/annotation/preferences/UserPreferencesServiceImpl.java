@@ -19,12 +19,14 @@ package de.tudarmstadt.ukp.clarin.webanno.api.annotation.preferences;
 
 import static de.tudarmstadt.ukp.clarin.webanno.api.ProjectService.PROJECT_FOLDER;
 import static de.tudarmstadt.ukp.clarin.webanno.api.ProjectService.SETTINGS_FOLDER;
+import static java.util.stream.Collectors.toList;
 
 import java.beans.PropertyDescriptor;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.Serializable;
 import java.lang.reflect.ParameterizedType;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -32,28 +34,40 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanWrapper;
 import org.springframework.beans.BeanWrapperImpl;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.PropertyAccessorFactory;
-import org.springframework.stereotype.Component;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
-import de.tudarmstadt.ukp.clarin.webanno.api.RepositoryProperties;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.coloring.ColoringService;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.coloring.ColoringStrategyType;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotationPreference;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import de.tudarmstadt.ukp.clarin.webanno.api.annotation.config.AnnotationAutoConfiguration;
+import de.tudarmstadt.ukp.clarin.webanno.api.config.RepositoryProperties;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.Mode;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
+import de.tudarmstadt.ukp.inception.preferences.Key;
+import de.tudarmstadt.ukp.inception.preferences.PreferencesService;
+import de.tudarmstadt.ukp.inception.rendering.coloring.ColoringService;
+import de.tudarmstadt.ukp.inception.rendering.coloring.ColoringStrategyType;
+import de.tudarmstadt.ukp.inception.rendering.config.AnnotationEditorProperties;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotationPreference;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
 
-@Component
+/**
+ * <p>
+ * This class is exposed as a Spring Component via
+ * {@link AnnotationAutoConfiguration#userPreferencesService}.
+ * </p>
+ */
 public class UserPreferencesServiceImpl
     implements UserPreferencesService
 {
@@ -62,21 +76,65 @@ public class UserPreferencesServiceImpl
      */
     private static final String ANNOTATION_PREFERENCE_PROPERTIES_FILE = "annotation.properties";
 
-    private final Logger log = LoggerFactory.getLogger(getClass());
-
-    private final AnnotationEditorProperties defaultPreferences;
+    private final AnnotationEditorDefaultPreferencesProperties defaultPreferences;
     private final AnnotationSchemaService annotationService;
     private final RepositoryProperties repositoryProperties;
     private final ColoringService coloringService;
+    private final AnnotationEditorProperties annotationEditorProperties;
+    private final PreferencesService preferencesService;
 
-    public UserPreferencesServiceImpl(AnnotationEditorProperties aDefaultPreferences,
+    public UserPreferencesServiceImpl(
+            AnnotationEditorDefaultPreferencesProperties aDefaultPreferences,
             AnnotationSchemaService aAnnotationService, RepositoryProperties aRepositoryProperties,
-            ColoringService aColoringService)
+            ColoringService aColoringService,
+            AnnotationEditorProperties aAnnotationEditorProperties,
+            PreferencesService aPreferencesService)
     {
         defaultPreferences = aDefaultPreferences;
         annotationService = aAnnotationService;
         repositoryProperties = aRepositoryProperties;
         coloringService = aColoringService;
+        annotationEditorProperties = aAnnotationEditorProperties;
+        preferencesService = aPreferencesService;
+    }
+
+    @Override
+    public void loadPreferences(AnnotatorState aState, String aUsername)
+        throws BeansException, IOException
+    {
+        AnnotationPreference preference = loadPreferences(aState.getProject(), aUsername,
+                aState.getMode());
+
+        aState.setPreferences(preference);
+
+        // set layers according to preferences
+        List<AnnotationLayer> allLayers = annotationService
+                .listAnnotationLayer(aState.getProject());
+        aState.setAllAnnotationLayers(allLayers);
+        aState.setAnnotationLayers(allLayers.stream() //
+                .filter(l -> !annotationEditorProperties.isLayerBlocked(l)) //
+                .filter(l -> l.isEnabled()) //
+                .filter(l -> !preference.getHiddenAnnotationLayerIds().contains(l.getId()))
+                .collect(toList()));
+
+        // set default layer according to preferences
+        Optional<AnnotationLayer> defaultLayer = aState.getAnnotationLayers().stream()
+                .filter(layer -> Objects.equals(layer.getId(), preference.getDefaultLayer()))
+                .findFirst();
+
+        if (defaultLayer.isPresent()) {
+            aState.setDefaultAnnotationLayer(defaultLayer.get());
+            aState.setSelectedAnnotationLayer(defaultLayer.get());
+        }
+
+        // Make sure the visibility logic of the right sidebar sees if there are selectable layers
+        aState.refreshSelectableLayers(annotationEditorProperties);
+    }
+
+    @Override
+    public void savePreference(AnnotatorState aState, String aUsername) throws IOException
+    {
+        savePreferences(aState.getProject(), aUsername, aState.getMode(), aState.getPreferences());
     }
 
     @Override
@@ -87,7 +145,9 @@ public class UserPreferencesServiceImpl
         // TODO Use modular preference loading once it is available and if there is a corresponding
         // data file. Otherwise, fall back to loading the legacy preferences
 
-        return loadLegacyPreferences(aProject, aUsername, aMode);
+        AnnotationPreference pref = loadLegacyPreferences(aProject, aUsername, aMode);
+
+        return pref;
     }
 
     @Override
@@ -202,9 +262,10 @@ public class UserPreferencesServiceImpl
         // no preference found
         catch (Exception e) {
             preference.setHiddenAnnotationLayerIds(new HashSet<>());
-            preference.setWindowSize(defaultPreferences.getPageSize());
+            preference.setWindowSize(preferencesService
+                    .loadDefaultTraitsForProject(KEY_BRAT_EDITOR_MANAGER_PREFS, aProject)
+                    .getDefaultPageSize());
             preference.setScrollPage(defaultPreferences.isAutoScroll());
-            preference.setRememberLayer(defaultPreferences.isRememberLayer());
         }
 
         // Get color preferences for each layer, init with default if not found
@@ -215,9 +276,14 @@ public class UserPreferencesServiceImpl
         }
         for (AnnotationLayer layer : annotationService.listAnnotationLayer(aProject)) {
             if (!colorPerLayer.containsKey(layer.getId())) {
-                colorPerLayer.put(layer.getId(),
-                        coloringService.getBestInitialStrategy(layer, preference));
+                colorPerLayer.put(layer.getId(), coloringService.getBestInitialStrategy(layer));
             }
+        }
+
+        // Upgrade from single sidebar width setting to split setting
+        if (preference.getSidebarSizeLeft() == 0 && preference.getSidebarSizeRight() == 0) {
+            preference.setSidebarSizeLeft(preference.getSidebarSize());
+            preference.setSidebarSizeRight(preference.getSidebarSize());
         }
 
         return preference;
@@ -242,5 +308,35 @@ public class UserPreferencesServiceImpl
                 + "/" + PROJECT_FOLDER + "/" + aProject.getId() + "/" + SETTINGS_FOLDER + "/"
                 + aUsername + "/" + ANNOTATION_PREFERENCE_PROPERTIES_FILE)));
         return property;
+    }
+
+    /**
+     * @deprecated We have this only so we can read the default page size here...
+     */
+    @Deprecated
+    public static final Key<BratAnnotationEditorManagerPrefs> KEY_BRAT_EDITOR_MANAGER_PREFS = new Key<>(
+            BratAnnotationEditorManagerPrefs.class, "annotation/editor/brat/manager");
+
+    /**
+     * @deprecated We have this only so we can read the default page size here...
+     */
+    @Deprecated
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class BratAnnotationEditorManagerPrefs
+        implements Serializable
+    {
+        private static final long serialVersionUID = 8809856241481077303L;
+
+        private int defaultPageSize = 10;
+
+        public int getDefaultPageSize()
+        {
+            return defaultPageSize;
+        }
+
+        public void setDefaultPageSize(int aDefaultPageSize)
+        {
+            defaultPageSize = aDefaultPageSize;
+        }
     }
 }

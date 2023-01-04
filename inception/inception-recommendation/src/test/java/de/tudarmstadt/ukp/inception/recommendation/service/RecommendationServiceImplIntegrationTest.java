@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package de.tudarmstadt.ukp.inception.recommendation.service;
 
 import static de.tudarmstadt.ukp.inception.recommendation.api.RecommendationService.FEATURE_NAME_IS_PREDICTION;
@@ -26,6 +25,7 @@ import static org.apache.uima.util.TypeSystemUtil.typeSystem2TypeSystemDescripti
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -38,36 +38,31 @@ import org.apache.uima.fit.factory.JCasFactory;
 import org.apache.uima.fit.util.CasUtil;
 import org.apache.uima.jcas.JCas;
 import org.apache.uima.resource.metadata.TypeSystemDescription;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.liquibase.LiquibaseAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
-import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
 import de.tudarmstadt.ukp.clarin.webanno.api.casstorage.CasAccessMode;
-import de.tudarmstadt.ukp.clarin.webanno.api.dao.AnnotationSchemaServiceImpl;
-import de.tudarmstadt.ukp.clarin.webanno.api.dao.casstorage.CasStorageSession;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
-import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
-import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
 import de.tudarmstadt.ukp.dkpro.core.api.ner.type.NamedEntity;
-import de.tudarmstadt.ukp.inception.recommendation.api.LearningRecordService;
+import de.tudarmstadt.ukp.inception.annotation.storage.CasStorageSession;
 import de.tudarmstadt.ukp.inception.recommendation.api.RecommenderFactoryRegistry;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.Recommender;
-import de.tudarmstadt.ukp.inception.scheduling.SchedulingService;
+import de.tudarmstadt.ukp.inception.recommendation.api.recommender.RecommendationEngineFactory;
+import de.tudarmstadt.ukp.inception.schema.service.AnnotationSchemaServiceImpl;
 
-@RunWith(SpringJUnit4ClassRunner.class)
+@ExtendWith(MockitoExtension.class)
 @ContextConfiguration(classes = SpringConfig.class)
 @Transactional
 @DataJpaTest(excludeAutoConfiguration = LiquibaseAutoConfiguration.class)
@@ -78,38 +73,30 @@ public class RecommendationServiceImplIntegrationTest
     private @Autowired TestEntityManager testEntityManager;
 
     private RecommendationServiceImpl sut;
-    private SessionRegistry sessionRegistry;
-    private UserDao userRepository;
-    private RecommenderFactoryRegistry recommenderFactoryRegistry;
-    private SchedulingService schedulingService;
+    private @Mock RecommenderFactoryRegistry recommenderFactoryRegistry;
     private @Mock AnnotationSchemaServiceImpl annoService;
-    private DocumentService documentService;
-    private LearningRecordService learningRecordService;
 
     private Project project;
     private AnnotationLayer layer;
-    private User user;
     private Recommender rec;
     private AnnotationFeature feature;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception
     {
-        sut = new RecommendationServiceImpl(sessionRegistry, userRepository,
-                recommenderFactoryRegistry, schedulingService, annoService, documentService,
-                learningRecordService, testEntityManager.getEntityManager());
+        sut = new RecommendationServiceImpl(null, null, null, recommenderFactoryRegistry, null,
+                annoService, null, null, testEntityManager.getEntityManager());
 
         project = createProject(PROJECT_NAME);
         layer = createAnnotationLayer();
         layer.setProject(project);
-        user = createUser();
         feature = createAnnotationFeature(layer, "value");
 
         rec = buildRecommender(project, feature);
         sut.createOrUpdateRecommender(rec);
     }
 
-    @After
+    @AfterEach
     public void tearDown() throws Exception
     {
         testEntityManager.clear();
@@ -131,9 +118,16 @@ public class RecommendationServiceImplIntegrationTest
                 .hasSize(1).contains(rec);
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     public void getNumOfEnabledRecommenders_WithOneEnabledRecommender()
     {
+        var recFactory = mock(RecommendationEngineFactory.class);
+        when(recommenderFactoryRegistry.getFactory(any(String.class))) //
+                .thenReturn(recFactory);
+
+        assertThat(recommenderFactoryRegistry.getFactory("nummy")).isNotNull();
+
         sut.createOrUpdateRecommender(rec);
 
         long numOfRecommenders = sut.countEnabledRecommenders();
@@ -191,8 +185,6 @@ public class RecommendationServiceImplIntegrationTest
             when(annoService.getFullProjectTypeSystem(project))
                     .thenReturn(typeSystem2TypeSystemDescription(jCas.getTypeSystem()));
             when(annoService.listAnnotationLayer(project)).thenReturn(asList(layer));
-            doCallRealMethod().when(annoService).upgradeCas(any(CAS.class),
-                    any(TypeSystemDescription.class));
             doCallRealMethod().when(annoService).upgradeCas(any(CAS.class), any(CAS.class),
                     any(TypeSystemDescription.class));
 
@@ -211,29 +203,22 @@ public class RecommendationServiceImplIntegrationTest
 
     private Project createProject(String aName)
     {
-        Project project = new Project();
-        project.setName(aName);
-        return testEntityManager.persist(project);
+        Project l = new Project();
+        l.setName(aName);
+        return testEntityManager.persist(l);
     }
 
     private AnnotationLayer createAnnotationLayer()
     {
-        AnnotationLayer layer = new AnnotationLayer();
-        layer.setEnabled(true);
-        layer.setName(NamedEntity.class.getName());
-        layer.setReadonly(false);
-        layer.setType(NamedEntity.class.getName());
-        layer.setUiName("test ui name");
-        layer.setAnchoringMode(false, false);
+        AnnotationLayer l = new AnnotationLayer();
+        l.setEnabled(true);
+        l.setName(NamedEntity.class.getName());
+        l.setReadonly(false);
+        l.setType(NamedEntity.class.getName());
+        l.setUiName("test ui name");
+        l.setAnchoringMode(false, false);
 
-        return testEntityManager.persist(layer);
-    }
-
-    private User createUser()
-    {
-        User user = new User();
-
-        return user;
+        return testEntityManager.persist(l);
     }
 
     private Recommender buildRecommender(Project aProject, AnnotationFeature aFeature)
@@ -245,18 +230,19 @@ public class RecommendationServiceImplIntegrationTest
         recommender.setAlwaysSelected(true);
         recommender.setSkipEvaluation(false);
         recommender.setMaxRecommendations(3);
+        recommender.setTool("dummyRecommenderTool");
 
         return recommender;
     }
 
     private AnnotationFeature createAnnotationFeature(AnnotationLayer aLayer, String aName)
     {
-        AnnotationFeature feature = new AnnotationFeature();
-        feature.setLayer(aLayer);
-        feature.setName(aName);
-        feature.setUiName(aName);
-        feature.setType(CAS.TYPE_NAME_STRING);
+        AnnotationFeature f = new AnnotationFeature();
+        f.setLayer(aLayer);
+        f.setName(aName);
+        f.setUiName(aName);
+        f.setType(CAS.TYPE_NAME_STRING);
 
-        return testEntityManager.persist(feature);
+        return testEntityManager.persist(f);
     }
 }

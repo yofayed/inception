@@ -31,7 +31,6 @@ import java.io.OutputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.zip.ZipFile;
 
 import org.apache.commons.io.IOUtils;
@@ -51,16 +50,16 @@ import org.apache.wicket.spring.injection.annot.SpringBean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.fileinput.BootstrapFileInputField;
-import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectExportService;
 import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectImportRequest;
-import de.tudarmstadt.ukp.clarin.webanno.export.ImportUtil;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
 import de.tudarmstadt.ukp.clarin.webanno.support.ZipUtils;
+import de.tudarmstadt.ukp.clarin.webanno.support.bootstrap.BootstrapFileInputField;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxButton;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxFormComponentUpdatingBehavior;
+import de.tudarmstadt.ukp.inception.project.export.ProjectExportService;
+import de.tudarmstadt.ukp.inception.project.export.ProjectImportExportUtils;
 
 public class ProjectImportPanel
     extends Panel
@@ -144,23 +143,26 @@ public class ProjectImportPanel
         // the admin wants to restore a project (maybe one exported from another instance) and in
         // that case we want to maintain the permissions the project originally had without adding
         // the admin as a manager.
-        Optional<User> manager = Optional.empty();
+        User manager = null;
         if (currentUserIsAdministrator) {
             if (!importPermissions) {
-                manager = Optional.of(currentUser);
+                manager = currentUser;
             }
         }
         // If the current user is NOT an admin but a project creator then we assume that the user is
         // importing the project for own use, so we add the user as a project manager.
         else if (currentUserIsProjectCreator) {
-            manager = Optional.of(currentUser);
+            manager = currentUser;
         }
 
         List<Project> importedProjects = new ArrayList<>();
         for (FileUpload exportedProject : exportedProjects) {
+            ProjectImportRequest request = new ProjectImportRequest(createMissingUsers,
+                    importPermissions, manager);
+
             try {
                 // Workaround for WICKET-6425
-                File tempFile = File.createTempFile("webanno-training", null);
+                File tempFile = File.createTempFile("project-import", null);
                 try (InputStream is = new BufferedInputStream(exportedProject.getInputStream());
                         OutputStream os = new FileOutputStream(tempFile);) {
                     if (!ZipUtils.isZipStream(is)) {
@@ -168,25 +170,27 @@ public class ProjectImportPanel
                     }
                     IOUtils.copyLarge(is, os);
 
-                    if (!ImportUtil.isZipValidWebanno(tempFile)) {
-                        throw new IOException("ZIP file is not a WebAnno project archive");
+                    if (!ProjectImportExportUtils.isValidProjectArchive(tempFile)) {
+                        throw new IOException(
+                                "Uploaded file is not an INCEpTION/WebAnno project archive");
                     }
 
-                    ProjectImportRequest request = new ProjectImportRequest(createMissingUsers,
-                            importPermissions, manager);
                     importedProjects
                             .add(exportService.importProject(request, new ZipFile(tempFile)));
                 }
                 finally {
                     tempFile.delete();
+
+                    request.getMessages().forEach(m -> getSession().warn(m));
                 }
             }
             catch (Exception e) {
-                aTarget.addChildren(getPage(), IFeedback.class);
                 error("Error importing project: " + ExceptionUtils.getRootCauseMessage(e));
                 LOG.error("Error importing project", e);
             }
         }
+
+        aTarget.addChildren(getPage(), IFeedback.class);
 
         if (!importedProjects.isEmpty() && selectedModel != null) {
             selectedModel.setObject(importedProjects.get(importedProjects.size() - 1));

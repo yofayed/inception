@@ -23,27 +23,32 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 
+import javax.servlet.http.HttpServletRequest;
+
 import org.apache.commons.lang3.reflect.ConstructorUtils;
 import org.apache.wicket.Component;
 import org.apache.wicket.MetaDataKey;
-import org.apache.wicket.RuntimeConfigurationType;
 import org.apache.wicket.core.request.handler.IPartialPageRequestHandler;
 import org.apache.wicket.feedback.IFeedbackMessageFilter;
+import org.apache.wicket.markup.head.IHeaderResponse;
+import org.apache.wicket.markup.head.MetaDataHeaderItem;
+import org.apache.wicket.markup.head.PriorityHeaderItem;
 import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.WebPage;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.ListView;
+import org.apache.wicket.markup.html.panel.EmptyPanel;
 import org.apache.wicket.markup.html.panel.FeedbackPanel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.util.ListModel;
 import org.apache.wicket.request.cycle.RequestCycle;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
-import org.apache.wicket.request.resource.caching.NoOpResourceCachingStrategy;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.csrf.CsrfToken;
 
 import de.tudarmstadt.ukp.clarin.webanno.support.SettingsUtil;
 import de.tudarmstadt.ukp.clarin.webanno.support.bootstrap.BootstrapFeedbackPanel;
@@ -132,7 +137,7 @@ public abstract class ApplicationPageBase
         try {
             Class<? extends Component> menubarClass = getApplication().getMetaData(MENUBAR_CLASS);
             if (menubarClass == null) {
-                menubarClass = MenuBar.class;
+                menubarClass = EmptyPanel.class;
             }
             add(ConstructorUtils.invokeConstructor(menubarClass, "menubar"));
         }
@@ -167,16 +172,20 @@ public abstract class ApplicationPageBase
     }
 
     @Override
-    protected void onConfigure()
+    public void renderHead(IHeaderResponse aResponse)
     {
-        super.onConfigure();
+        super.renderHead(aResponse);
 
-        // Do not cache pages in development mode - allows us to make changes to the HMTL without
-        // having to reload the application
-        if (RuntimeConfigurationType.DEVELOPMENT.equals(getApplication().getConfigurationType())) {
-            getApplication().getMarkupSettings().getMarkupFactory().getMarkupCache().clear();
-            getApplication().getResourceSettings()
-                    .setCachingStrategy(NoOpResourceCachingStrategy.INSTANCE);
+        // Actually, this is pretty pointless because we disable Spring Security CSRF for the
+        // Wicket URLs...
+        var containerRequest = RequestCycle.get().getRequest().getContainerRequest();
+        if (containerRequest instanceof HttpServletRequest) {
+            var httpRequest = (HttpServletRequest) containerRequest;
+            var csrfToken = (CsrfToken) httpRequest.getAttribute(CsrfToken.class.getName());
+            if (csrfToken != null) {
+                aResponse.render(new PriorityHeaderItem(
+                        MetaDataHeaderItem.forMetaTag("csrftoken", csrfToken.getToken())));
+            }
         }
     }
 

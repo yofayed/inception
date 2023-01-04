@@ -23,6 +23,7 @@ import static de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.CasDiff.doDiff;
 import static de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior.enabledWhen;
 import static de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior.visibleWhen;
 import static java.util.Arrays.asList;
+import static java.util.stream.Collectors.toCollection;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -30,8 +31,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.uima.cas.CAS;
 import org.apache.wicket.ajax.AjaxEventBehavior;
@@ -61,26 +64,27 @@ import org.dkpro.statistics.agreement.coding.ICodingAnnotationStudy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import de.agilecoders.wicket.core.markup.html.bootstrap.components.PopoverBehavior;
 import de.agilecoders.wicket.core.markup.html.bootstrap.components.PopoverConfig;
 import de.agilecoders.wicket.core.markup.html.bootstrap.components.TooltipConfig.Placement;
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.select.BootstrapSelect;
 import de.tudarmstadt.ukp.clarin.webanno.agreement.AgreementReportExportFormat;
 import de.tudarmstadt.ukp.clarin.webanno.agreement.AgreementResult;
 import de.tudarmstadt.ukp.clarin.webanno.agreement.AgreementUtils;
 import de.tudarmstadt.ukp.clarin.webanno.agreement.PairwiseAnnotationResult;
 import de.tudarmstadt.ukp.clarin.webanno.agreement.measures.DefaultAgreementTraits;
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
 import de.tudarmstadt.ukp.clarin.webanno.api.ProjectService;
 import de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.CasDiff;
 import de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.api.DiffAdapter;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
-import de.tudarmstadt.ukp.clarin.webanno.support.AJAXDownload;
+import de.tudarmstadt.ukp.clarin.webanno.model.Tag;
+import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
 import de.tudarmstadt.ukp.clarin.webanno.support.DefaultRefreshingView;
 import de.tudarmstadt.ukp.clarin.webanno.support.DescriptionTooltipBehavior;
+import de.tudarmstadt.ukp.clarin.webanno.support.bootstrap.PopoverBehavior;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxFormComponentUpdatingBehavior;
+import de.tudarmstadt.ukp.clarin.webanno.support.wicket.AjaxDownloadBehavior;
 import de.tudarmstadt.ukp.clarin.webanno.support.wicket.AjaxDownloadLink;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
 
 public class PairwiseCodingAgreementTable
     extends Panel
@@ -92,6 +96,7 @@ public class PairwiseCodingAgreementTable
     private @SpringBean AnnotationSchemaService annotationService;
     private @SpringBean DocumentService documentService;
     private @SpringBean ProjectService projectService;
+    private @SpringBean UserDao userRepository;
 
     private final RefreshingView<String> rows;
     private final AjaxDownloadLink exportAllButton;
@@ -126,7 +131,7 @@ public class PairwiseCodingAgreementTable
             return raters;
         });
 
-        add(formatField = new BootstrapSelect<AgreementReportExportFormat>("exportFormat",
+        add(formatField = new DropDownChoice<AgreementReportExportFormat>("exportFormat",
                 Model.of(CSV), asList(AgreementReportExportFormat.values()),
                 new EnumChoiceRenderer<>(this)));
         formatField.add(new LambdaAjaxFormComponentUpdatingBehavior("change"));
@@ -175,11 +180,13 @@ public class PairwiseCodingAgreementTable
                         }
                         // Raters header horizontally
                         else if (aRowItem.getIndex() == 0 && aCellItem.getIndex() != 0) {
-                            cell.add(new Label("label", Model.of(aCellItem.getModelObject())));
+                            cell.add(new Label("label",
+                                    userRepository.get(aCellItem.getModelObject()).getUiName()));
                         }
                         // Raters header vertically
                         else if (aRowItem.getIndex() != 0 && aCellItem.getIndex() == 0) {
-                            cell.add(new Label("label", Model.of(aRowItem.getModelObject())));
+                            cell.add(new Label("label",
+                                    userRepository.get(aRowItem.getModelObject()).getUiName()));
                         }
                         // Upper diagonal
                         else if (aCellItem.getIndex() > aRowItem.getIndex()) {
@@ -280,7 +287,7 @@ public class PairwiseCodingAgreementTable
                 + String.format("- %s: %d/%d%n", result.getCasGroupIds().get(1),
                         getNonNullCount(result, result.getCasGroupIds().get(1)),
                         result.getStudy().getItemCount())
-                + String.format("Distinct labels used: %d%n", result.getStudy().getCategoryCount());
+                + String.format("Distinct labels: %d%n", result.getStudy().getCategoryCount());
 
         Label l = new Label("label", Model.of(label));
         l.add(makeDownloadBehavior(aRater1, aRater2));
@@ -323,55 +330,56 @@ public class PairwiseCodingAgreementTable
             @Override
             protected void onEvent(AjaxRequestTarget aTarget)
             {
-                AJAXDownload download = new AJAXDownload()
-                {
-                    private static final long serialVersionUID = 1L;
-
-                    @Override
-                    protected IResourceStream getResourceStream()
-                    {
-                        return new AbstractResourceStream()
-                        {
-                            private static final long serialVersionUID = 1L;
-
-                            @Override
-                            public InputStream getInputStream()
-                                throws ResourceStreamNotFoundException
-                            {
-                                try {
-                                    CodingAgreementResult result = PairwiseCodingAgreementTable.this
-                                            .getModelObject().getStudy(aKey1, aKey2);
-
-                                    switch (formatField.getModelObject()) {
-                                    case CSV:
-                                        return AgreementUtils.generateCsvReport(result);
-                                    case DEBUG:
-                                        return generateDebugReport(result);
-                                    default:
-                                        throw new IllegalStateException("Unknown export format ["
-                                                + formatField.getModelObject() + "]");
-                                    }
-                                }
-                                catch (Exception e) {
-                                    // FIXME Is there some better error handling here?
-                                    LOG.error("Unable to generate agreement report", e);
-                                    throw new ResourceStreamNotFoundException(e);
-                                }
-                            }
-
-                            @Override
-                            public void close() throws IOException
-                            {
-                                // Nothing to do
-                            }
-                        };
-                    }
-                };
+                AjaxDownloadBehavior download = new AjaxDownloadBehavior(
+                        LoadableDetachableModel.of(PairwiseCodingAgreementTable.this::getFilename),
+                        LoadableDetachableModel.of(() -> getAgreementTableData(aKey1, aKey2)));
                 getComponent().add(download);
-                download.initiate(aTarget,
-                        "agreement" + formatField.getModelObject().getExtension());
+                download.initiate(aTarget);
             }
         };
+    }
+
+    private AbstractResourceStream getAgreementTableData(final String aKey1, final String aKey2)
+    {
+        return new AbstractResourceStream()
+        {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public InputStream getInputStream() throws ResourceStreamNotFoundException
+            {
+                try {
+                    CodingAgreementResult result = PairwiseCodingAgreementTable.this
+                            .getModelObject().getStudy(aKey1, aKey2);
+
+                    switch (formatField.getModelObject()) {
+                    case CSV:
+                        return AgreementUtils.generateCsvReport(result);
+                    case DEBUG:
+                        return generateDebugReport(result);
+                    default:
+                        throw new IllegalStateException(
+                                "Unknown export format [" + formatField.getModelObject() + "]");
+                    }
+                }
+                catch (Exception e) {
+                    // FIXME Is there some better error handling here?
+                    LOG.error("Unable to generate agreement report", e);
+                    throw new ResourceStreamNotFoundException(e);
+                }
+            }
+
+            @Override
+            public void close() throws IOException
+            {
+                // Nothing to do
+            }
+        };
+    }
+
+    private String getFilename()
+    {
+        return "agreement" + formatField.getModelObject().getExtension();
     }
 
     private InputStream generateDebugReport(CodingAgreementResult aResult)
@@ -411,13 +419,16 @@ public class PairwiseCodingAgreementTable
 
                 CasDiff diff = doDiff(adapters, traits.getLinkCompareBehavior(), casMap);
 
+                Set<String> tagset = annotationService.listTags(feature.getTagset()).stream()
+                        .map(Tag::getName).collect(toCollection(LinkedHashSet::new));
+
                 // AgreementResult agreementResult = AgreementUtils.makeStudy(diff,
                 // feature.getLayer().getName(), feature.getName(),
                 // pref.excludeIncomplete, casMap);
                 // TODO: for the moment, we always include incomplete annotations during this
                 // export.
                 CodingAgreementResult agreementResult = makeCodingStudy(diff,
-                        feature.getLayer().getName(), feature.getName(), false, casMap);
+                        feature.getLayer().getName(), feature.getName(), tagset, false, casMap);
 
                 try {
                     return AgreementUtils.generateCsvReport(agreementResult);

@@ -17,6 +17,7 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.ui.curation.overview;
 
+import static de.tudarmstadt.ukp.clarin.webanno.support.wicket.WicketUtil.wrapInTryCatch;
 import static org.apache.wicket.event.Broadcast.BUBBLE;
 
 import org.apache.wicket.ajax.AjaxEventBehavior;
@@ -27,9 +28,8 @@ import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
 import org.apache.wicket.request.cycle.RequestCycle;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotatorState;
-import de.tudarmstadt.ukp.clarin.webanno.support.wicket.WicketUtil;
 import de.tudarmstadt.ukp.clarin.webanno.ui.curation.event.CurationUnitClickedEvent;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
 
 public class CurationUnitOverviewLink
     extends AjaxLink<CurationUnit>
@@ -40,8 +40,6 @@ public class CurationUnitOverviewLink
 
     private static final String CSS_CLASS_OUT_RANGE = "out-range";
     private static final String CSS_CLASS_IN_RANGE = "in-range";
-    private static final String CSS_CLASS_AGREE = "agree";
-    private static final String CSS_CLASS_DISAGREE = "disagree";
     private static final String CSS_CLASS_CURRENT = "current";
 
     private IModel<AnnotatorState> annotatorState;
@@ -62,18 +60,11 @@ public class CurationUnitOverviewLink
         final CurationUnit unitState = getModelObject();
         final AnnotatorState state = annotatorState.getObject();
 
+        aTag.append(ATTR_CLASS, unitState.getState().getCssClass(), " ");
+
         // Is in focus?
         if (unitState.getUnitIndex() == state.getFocusUnitIndex()) {
             aTag.append(ATTR_CLASS, CSS_CLASS_CURRENT, " ");
-        }
-
-        // Agree or disagree?
-        String cC = unitState.getSentenceState().getColor();
-        if (cC != null) {
-            aTag.append(ATTR_CLASS, CSS_CLASS_DISAGREE, " ");
-        }
-        else {
-            aTag.append(ATTR_CLASS, CSS_CLASS_AGREE, " ");
         }
 
         // In range or not?
@@ -99,8 +90,7 @@ public class CurationUnitOverviewLink
         if (isEnabledInHierarchy()) {
             RequestCycle.get().find(AjaxRequestTarget.class).ifPresent(_target -> {
                 for (AjaxEventBehavior b : getBehaviors(AjaxEventBehavior.class)) {
-                    _target.appendJavaScript(
-                            WicketUtil.wrapInTryCatch(b.getCallbackScript().toString()));
+                    _target.appendJavaScript(wrapInTryCatch(b.getCallbackScript()));
                 }
             });
         }

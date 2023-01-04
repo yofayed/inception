@@ -29,7 +29,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.mockito.MockitoAnnotations.initMocks;
 
 import java.io.File;
 import java.util.HashSet;
@@ -37,13 +36,14 @@ import java.util.List;
 import java.util.Set;
 import java.util.zip.ZipFile;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
-import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectExportRequest;
+import de.tudarmstadt.ukp.clarin.webanno.api.export.FullProjectExportRequest;
 import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectExportTaskMonitor;
 import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectImportRequest;
 import de.tudarmstadt.ukp.clarin.webanno.export.model.ExportedProject;
@@ -53,7 +53,9 @@ import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.inception.recommendation.api.RecommendationService;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.Recommender;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
 
+@ExtendWith(MockitoExtension.class)
 public class RecommenderExporterTest
 {
     private @Mock AnnotationSchemaService annotationService;
@@ -63,26 +65,19 @@ public class RecommenderExporterTest
 
     private RecommenderExporter sut;
 
-    @Before
+    @BeforeEach
     public void setUp()
     {
-        initMocks(this);
-
         layer = new AnnotationLayer();
         layer.setName("Layer");
 
         project = new Project();
+        project.setId(1l);
         project.setName("Test Project");
 
         when(annotationService.findLayer(project, layer.getName())).thenReturn(layer);
         when(annotationService.getFeature(eq("Feature 1"), any(AnnotationLayer.class)))
                 .thenReturn(buildFeature("1"));
-        when(annotationService.getFeature(eq("Feature 2"), any(AnnotationLayer.class)))
-                .thenReturn(buildFeature("2"));
-        when(annotationService.getFeature(eq("Feature 3"), any(AnnotationLayer.class)))
-                .thenReturn(buildFeature("3"));
-        when(annotationService.getFeature(eq("Feature 4"), any(AnnotationLayer.class)))
-                .thenReturn(buildFeature("4"));
 
         sut = new RecommenderExporter(annotationService, recommendationService);
     }
@@ -90,13 +85,20 @@ public class RecommenderExporterTest
     @Test
     public void thatExportingWorks()
     {
+        when(annotationService.getFeature(eq("Feature 2"), any(AnnotationLayer.class)))
+                .thenReturn(buildFeature("2"));
+        when(annotationService.getFeature(eq("Feature 3"), any(AnnotationLayer.class)))
+                .thenReturn(buildFeature("3"));
+        when(annotationService.getFeature(eq("Feature 4"), any(AnnotationLayer.class)))
+                .thenReturn(buildFeature("4"));
         when(recommendationService.listRecommenders(project)).thenReturn(recommenders());
 
         // Export the project and import it again
         ArgumentCaptor<Recommender> captor = runExportImportAndFetchRecommenders();
 
         // Check that after re-importing the exported projects, they are identical to the original
-        assertThat(captor.getAllValues()).usingFieldByFieldElementComparator()
+        assertThat(captor.getAllValues()) //
+                .usingRecursiveFieldByFieldElementComparator()
                 .containsExactlyInAnyOrderElementsOf(recommenders());
     }
 
@@ -145,9 +147,8 @@ public class RecommenderExporterTest
     private ArgumentCaptor<Recommender> runExportImportAndFetchRecommenders()
     {
         // Export the project
-        ProjectExportRequest exportRequest = new ProjectExportRequest();
-        ProjectExportTaskMonitor monitor = new ProjectExportTaskMonitor();
-        exportRequest.setProject(project);
+        FullProjectExportRequest exportRequest = new FullProjectExportRequest(project, null, false);
+        ProjectExportTaskMonitor monitor = new ProjectExportTaskMonitor(project, null, "test");
         ExportedProject exportedProject = new ExportedProject();
         File file = mock(File.class);
 

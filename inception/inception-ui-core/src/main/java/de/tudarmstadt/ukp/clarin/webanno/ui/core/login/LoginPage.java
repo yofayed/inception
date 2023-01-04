@@ -17,12 +17,16 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.ui.core.login;
 
+import static de.tudarmstadt.ukp.clarin.webanno.security.UserDao.ADMIN_DEFAULT_PASSWORD;
+import static de.tudarmstadt.ukp.clarin.webanno.security.UserDao.ADMIN_DEFAULT_USERNAME;
+import static de.tudarmstadt.ukp.clarin.webanno.security.model.Role.ROLE_ADMIN;
+import static de.tudarmstadt.ukp.clarin.webanno.security.model.Role.ROLE_USER;
+import static de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior.enabledWhenNot;
 import static de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior.visibleWhen;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
-import java.util.Properties;
 
 import javax.servlet.http.HttpSession;
 
@@ -33,17 +37,20 @@ import org.apache.wicket.authroles.authentication.AuthenticatedWebSession;
 import org.apache.wicket.devutils.stateless.StatelessComponent;
 import org.apache.wicket.markup.head.CssHeaderItem;
 import org.apache.wicket.markup.head.IHeaderResponse;
+import org.apache.wicket.markup.head.OnDomReadyHeaderItem;
 import org.apache.wicket.markup.html.WebMarkupContainer;
-import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.form.Button;
 import org.apache.wicket.markup.html.form.HiddenField;
 import org.apache.wicket.markup.html.form.PasswordTextField;
 import org.apache.wicket.markup.html.form.RequiredTextField;
 import org.apache.wicket.markup.html.form.StatelessForm;
 import org.apache.wicket.model.CompoundPropertyModel;
+import org.apache.wicket.model.IModel;
+import org.apache.wicket.model.LoadableDetachableModel;
 import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
 import org.apache.wicket.request.Url;
 import org.apache.wicket.request.cycle.RequestCycle;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.request.parameter.UrlRequestParametersAdapter;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 import org.apache.wicket.util.string.StringValue;
@@ -60,11 +67,11 @@ import com.giffing.wicket.spring.boot.context.scan.WicketSignInPage;
 import de.agilecoders.wicket.webjars.request.resource.WebjarsCssResourceReference;
 import de.tudarmstadt.ukp.clarin.webanno.api.SessionMetaData;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
-import de.tudarmstadt.ukp.clarin.webanno.security.model.Role;
+import de.tudarmstadt.ukp.clarin.webanno.security.config.LoginProperties;
+import de.tudarmstadt.ukp.clarin.webanno.security.config.SecurityProperties;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
-import de.tudarmstadt.ukp.clarin.webanno.support.SettingsUtil;
-import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior;
 import de.tudarmstadt.ukp.clarin.webanno.ui.core.page.ApplicationPageBase;
+import de.tudarmstadt.ukp.inception.support.markdown.MarkdownLabel;
 
 /**
  * The login page.
@@ -75,52 +82,136 @@ import de.tudarmstadt.ukp.clarin.webanno.ui.core.page.ApplicationPageBase;
 public class LoginPage
     extends ApplicationPageBase
 {
-    private static final long serialVersionUID = -333578034707672294L;
+    private static final String PARAM_SKIP_AUTP_LOGIN = "skipAutoLogin";
+    private static final String PARAM_ERROR = "error";
 
-    private static final String ADMIN_DEFAULT_USERNAME = "admin";
-    private static final String ADMIN_DEFAULT_PASSWORD = "admin";
+    private static final String PROP_RESTORE_DEFAULT_ADMIN_ACCOUNT = "restoreDefaultAdminAccount";
+
+    private static final long serialVersionUID = -333578034707672294L;
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     private @SpringBean UserDao userRepository;
-    private @SpringBean(required = false) SessionRegistry sessionRegistry;
     private @SpringBean LoginProperties loginProperties;
+    private @SpringBean SecurityProperties securityProperties;
+    private @SpringBean SessionRegistry sessionRegistry;
 
-    private LoginForm form;
+    private final LoginForm localLoginPanel;
+    private final OAuth2LoginPanel oAuth2LoginPanel;
+    private final Saml2LoginPanel saml2LoginPanel;
+
     private final WebMarkupContainer tooManyUsersLabel;
-    private final Button signInBtn;
+    private final IModel<Boolean> tooManyUsers;
 
-    public LoginPage()
+    public LoginPage(PageParameters aParameters)
     {
         setStatelessHint(true);
         setVersioned(false);
 
-        add(form = new LoginForm("loginForm"));
-        signInBtn = new Button("signInBtn");
-        signInBtn.add(LambdaBehavior.enabledWhen(() -> !isTooManyUsers()));
+        tooManyUsers = LoadableDetachableModel.of(this::isTooManyUsers).orElse(false);
+
+        localLoginPanel = new LoginForm("loginForm");
+        localLoginPanel.add(visibleWhen(this::isLoginAllowed));
+        queue(localLoginPanel);
+
+        redirectIfAlreadyLoggedIn(); // Must come after the localLoginPanel is initialized!
+
+        oAuth2LoginPanel = new OAuth2LoginPanel("oauth2LoginPanel");
+        oAuth2LoginPanel.add(visibleWhen(this::isLoginAllowed));
+        queue(oAuth2LoginPanel);
+
+        saml2LoginPanel = new Saml2LoginPanel("saml2LoginPanel");
+        saml2LoginPanel.add(visibleWhen(this::isLoginAllowed));
+        queue(saml2LoginPanel);
+
+        var skipAutoLogin = aParameters.get(PARAM_SKIP_AUTP_LOGIN).toBoolean(false)
+                || tooManyUsers.getObject();
+
+        // Failed OAuth2/SAML call this page with the parameter `?error` so we display a message
+        var error = aParameters.getNamedKeys().contains(PARAM_ERROR);
+        if (error) {
+            error("Login with SSO service failed. You might try logging out of your SSO service "
+                    + "before trying to log in here again.");
+            skipAutoLogin = true;
+        }
+
+        if (!skipAutoLogin && isLoginAllowed()) {
+            oAuth2LoginPanel.autoLogin();
+            saml2LoginPanel.autoLogin();
+        }
+
         tooManyUsersLabel = new WebMarkupContainer("usersLabel");
-        tooManyUsersLabel.add(LambdaBehavior.visibleWhen(this::isTooManyUsers));
-        form.add(signInBtn);
-        form.add(tooManyUsersLabel);
-        form.add(LambdaBehavior.enabledWhen(() -> !isTooManyUsers()));
+        tooManyUsersLabel.add(visibleWhen(tooManyUsers));
+        queue(tooManyUsersLabel);
 
-        redirectIfAlreadyLoggedIn();
+        maybeInitializeAdminUser();
+    }
 
+    private boolean isLoginAllowed()
+    {
+        return !tooManyUsers.getObject() && !isAdminAccountRecoveryMode();
+    }
+
+    private void maybeInitializeAdminUser()
+    {
+        // Reset/recreated default admin account if requested
+        if (isAdminAccountRecoveryMode()) {
+            localLoginPanel.setVisible(false);
+            User admin;
+            boolean exists;
+            if (userRepository.exists(ADMIN_DEFAULT_USERNAME)) {
+                admin = userRepository.get(ADMIN_DEFAULT_USERNAME);
+                exists = true;
+            }
+            else {
+                admin = new User();
+                admin.setUsername(ADMIN_DEFAULT_USERNAME);
+                exists = false;
+            }
+            admin.setPassword(ADMIN_DEFAULT_PASSWORD);
+            admin.setEnabled(true);
+            admin.setRoles(EnumSet.of(ROLE_ADMIN, ROLE_USER));
+            if (exists) {
+                userRepository.update(admin);
+                String msg = "Default admin account has been reset to the default permissions "
+                        + "and credentials: " + ADMIN_DEFAULT_USERNAME + "/"
+                        + ADMIN_DEFAULT_PASSWORD + ". Login has been disabled for security "
+                        + "reasons. Please restart the application without the password "
+                        + "resetting parameter.";
+                warn(msg);
+                log.info(msg);
+            }
+            else {
+                userRepository.create(admin);
+                String msg = "Default admin account has been recreated: " + ADMIN_DEFAULT_USERNAME
+                        + "/" + ADMIN_DEFAULT_PASSWORD + ". Login has "
+                        + "been disabled for security reasons. Please restart the application "
+                        + "without the password resetting parameter.";
+                warn(msg);
+                log.info(msg);
+            }
+        }
         // Create admin user if there is no user yet
-        if (userRepository.list().isEmpty()) {
+        else if (userRepository.list().isEmpty()) {
             User admin = new User();
             admin.setUsername(ADMIN_DEFAULT_USERNAME);
             admin.setPassword(ADMIN_DEFAULT_PASSWORD);
             admin.setEnabled(true);
-            admin.setRoles(EnumSet.of(Role.ROLE_ADMIN, Role.ROLE_USER));
-            userRepository.create(admin);
+            admin.setRoles(EnumSet.of(ROLE_ADMIN, ROLE_USER));
 
-            String msg = "No user accounts have been found. An admin account has been created: "
-                    + ADMIN_DEFAULT_USERNAME + "/" + ADMIN_DEFAULT_PASSWORD;
             // We log this as a warning so the message sticks on the screen. Success and info
             // messages are set to auto-close after a short time.
+            String msg = "No user accounts have been found. An admin account has been created: "
+                    + ADMIN_DEFAULT_USERNAME + "/" + ADMIN_DEFAULT_PASSWORD;
             warn(msg);
+
+            userRepository.create(admin);
         }
+    }
+
+    private boolean isAdminAccountRecoveryMode()
+    {
+        return System.getProperty(PROP_RESTORE_DEFAULT_ADMIN_ACCOUNT) != null;
     }
 
     /**
@@ -148,6 +239,13 @@ public class LoginPage
 
         aResponse.render(CssHeaderItem
                 .forReference(new WebjarsCssResourceReference("hover/current/css/hover.css")));
+
+        aResponse.render(CssHeaderItem.forReference(LoginPageCssResourceReference.get()));
+
+        // Capture the URL fragment into a hidden form field so we can use it later when
+        // forwarding to the target page after login
+        aResponse.render(OnDomReadyHeaderItem.forScript(
+                "$('#urlfragment').attr('value', unescape(self.document.location.hash.substring(1)));"));
     }
 
     private void redirectIfAlreadyLoggedIn()
@@ -174,6 +272,7 @@ public class LoginPage
         extends StatelessForm<LoginForm>
     {
         private static final long serialVersionUID = 1L;
+
         private String username;
         private String password;
         private String urlfragment;
@@ -182,34 +281,37 @@ public class LoginPage
         {
             super(id);
             setModel(new CompoundPropertyModel<>(this));
-            add(new RequiredTextField<String>("username"));
-            add(new PasswordTextField("password"));
+
+            add(new RequiredTextField<String>("username").setOutputMarkupId(true));
+            add(new PasswordTextField("password").setOutputMarkupId(true));
             add(new HiddenField<>("urlfragment"));
-            Properties settings = SettingsUtil.getSettings();
-            String loginMessage = settings.getProperty(SettingsUtil.CFG_LOGIN_MESSAGE);
-            add(new Label("loginMessage", loginMessage).setEscapeModelStrings(false)
-                    .add(visibleWhen(() -> isNotBlank(loginMessage))));
+            add(new Button("signInBtn").add(enabledWhenNot(tooManyUsers)));
+            add(new MarkdownLabel("loginMessage", loginProperties.getMessage()) //
+                    .add(visibleWhen(() -> isNotBlank(loginProperties.getMessage()))));
         }
 
         @Override
         protected void onSubmit()
         {
+            // The redirect URL is stored in the session, so we have to pick it up before the
+            // session is reset as part of the login.
             String redirectUrl = getRedirectUrl();
-            AuthenticatedWebSession session = AuthenticatedWebSession.get();
-            if (session.signIn(username, password)) {
-                log.debug("Login successful");
-                if (sessionRegistry != null) {
-                    // Form-based login isn't detected by SessionManagementFilter. Thus handling
-                    // session registration manually here.
-                    HttpSession containerSession = ((ServletWebRequest) RequestCycle.get()
-                            .getRequest()).getContainerRequest().getSession(false);
-                    sessionRegistry.registerNewSession(containerSession.getId(), username);
-                }
-                setDefaultResponsePageIfNecessary(redirectUrl);
-            }
-            else {
+
+            // We only accept users that are not bound to a particular realm (e.g. to a project)
+            User user = userRepository.get(username);
+            if (user == null || user.getRealm() != null) {
                 error("Login failed");
+                return;
             }
+
+            AuthenticatedWebSession session = AuthenticatedWebSession.get();
+            if (!session.signIn(username, password)) {
+                error("Login failed");
+                return;
+            }
+
+            log.debug("Login successful");
+            setDefaultResponsePageIfNecessary(redirectUrl);
         }
 
         private void setDefaultResponsePageIfNecessary(String aRedirectUrl)
@@ -224,8 +326,9 @@ public class LoginPage
             }
             else {
                 log.debug("Redirecting to saved URL: [{}]", aRedirectUrl);
-                if (isNotBlank(form.urlfragment) && form.urlfragment.startsWith("!")) {
-                    Url url = Url.parse("http://dummy?" + form.urlfragment.substring(1));
+                if (isNotBlank(localLoginPanel.urlfragment)
+                        && localLoginPanel.urlfragment.startsWith("!")) {
+                    Url url = Url.parse("http://dummy?" + localLoginPanel.urlfragment.substring(1));
                     UrlRequestParametersAdapter adapter = new UrlRequestParametersAdapter(url);
                     LinkedHashMap<String, StringValue> params = new LinkedHashMap<>();
                     for (String name : adapter.getParameterNames()) {
@@ -263,8 +366,8 @@ public class LoginPage
 
         // In case there was a URL fragment in the original URL, append it again to the redirect
         // URL.
-        if (redirectUrl != null && isNotBlank(form.urlfragment)) {
-            redirectUrl += "#" + form.urlfragment;
+        if (redirectUrl != null && isNotBlank(localLoginPanel.urlfragment)) {
+            redirectUrl += "#" + localLoginPanel.urlfragment;
         }
 
         return redirectUrl;

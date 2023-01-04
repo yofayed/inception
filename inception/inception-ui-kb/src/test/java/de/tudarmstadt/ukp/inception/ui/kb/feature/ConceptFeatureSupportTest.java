@@ -22,35 +22,37 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
-import static org.mockito.MockitoAnnotations.initMocks;
 
 import java.util.Optional;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.inception.kb.KnowledgeBaseService;
+import de.tudarmstadt.ukp.inception.kb.config.KnowledgeBasePropertiesImpl;
 import de.tudarmstadt.ukp.inception.kb.graph.KBHandle;
-import de.tudarmstadt.ukp.inception.kb.graph.KBInstance;
 
+@ExtendWith(MockitoExtension.class)
 public class ConceptFeatureSupportTest
 {
     private @Mock KnowledgeBaseService kbService;
+    private ConceptFeatureSupport sut;
 
-    @Before
+    @BeforeEach
     public void setUp()
     {
-        initMocks(this);
+        sut = new ConceptFeatureSupport(
+                new ConceptLabelCache(kbService, new KnowledgeBasePropertiesImpl()));
     }
 
     @Test
     public void testAccepts()
     {
-        ConceptFeatureSupport sut = new ConceptFeatureSupport(kbService);
-
         AnnotationFeature feat1 = new AnnotationFeature("Dummy feature",
                 ConceptFeatureSupport.PREFIX + "someConcept");
 
@@ -63,21 +65,19 @@ public class ConceptFeatureSupportTest
     @Test
     public void testWrapUnwrap() throws Exception
     {
-        ConceptFeatureSupport sut = new ConceptFeatureSupport(kbService);
-
         AnnotationFeature feat1 = new AnnotationFeature("Dummy feature",
                 ConceptFeatureSupport.PREFIX + "someConcept");
 
         KBHandle referenceHandle = new KBHandle("id", "name");
 
-        when(kbService.readItem((Project) any(), anyString()))
-                .thenReturn(Optional.of(new KBInstance("id", "name")));
+        when(kbService.readHandle((Project) any(), anyString()))
+                .thenReturn(Optional.of(new KBHandle("id", "name")));
 
-        when(kbService.readItem((Project) any(), anyString()))
-                .thenReturn(Optional.of(new KBInstance("id", "name")));
+        when(kbService.readHandle((Project) any(), anyString()))
+                .thenReturn(Optional.of(new KBHandle("id", "name")));
 
-        assertThat(sut.wrapFeatureValue(feat1, null, "id"))
-                .isEqualToComparingFieldByField(referenceHandle);
+        assertThat(sut.wrapFeatureValue(feat1, null, "id")).usingRecursiveComparison()
+                .isEqualTo(referenceHandle);
         assertThat(sut.wrapFeatureValue(feat1, null, referenceHandle)).isSameAs(referenceHandle);
         assertThat(sut.wrapFeatureValue(feat1, null, null)).isNull();
         assertThatThrownBy(() -> sut.wrapFeatureValue(feat1, null, new Object()))

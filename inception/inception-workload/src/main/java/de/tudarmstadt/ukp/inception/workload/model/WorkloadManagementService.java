@@ -23,7 +23,7 @@ import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocument;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocumentState;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
-import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
+import de.tudarmstadt.ukp.inception.workload.extension.WorkloadManagerExtension;
 
 /**
  * Interface for all required DB calls. Short explanation given in the Interface implementation
@@ -31,18 +31,21 @@ import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
  */
 public interface WorkloadManagementService
 {
+    /**
+     * @return for a given project a WorkloadManager object. Also applicable for older INCEpTION
+     *         version where the workload feature was not present. Also, if no entity can be found,
+     *         a new entry will be created and returned.
+     * @param aProject
+     *            a project
+     */
     WorkloadManager loadOrCreateWorkloadManagerConfiguration(Project aProject);
+
+    WorkloadManagerExtension<?> getWorkloadManagerExtension(Project aProject);
 
     void saveConfiguration(WorkloadManager aManager);
 
-    List<AnnotationDocument> getUsersForSpecificDocumentAndState(AnnotationDocumentState aState,
-            SourceDocument aSourceDocumentt, Project aProject);
+    List<AnnotationDocument> listAnnotationDocumentsForSourceDocumentInState(
+            SourceDocument aSourceDocument, AnnotationDocumentState aState);
 
-    Long getNumberOfUsersWorkingOnADocument(SourceDocument aDocument, Project aProject);
-
-    List<SourceDocument> getAnnotationDocumentListForUser(Project aProject, User aUser);
-
-    List<AnnotationDocument> getAnnotationDocumentListForUserWithState(Project aProject, User aUser,
-            AnnotationDocumentState aState);
-
+    Long getNumberOfUsersWorkingOnADocument(SourceDocument aDocument);
 }

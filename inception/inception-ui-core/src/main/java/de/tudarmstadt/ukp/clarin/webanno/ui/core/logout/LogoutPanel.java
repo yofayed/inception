@@ -19,14 +19,11 @@ package de.tudarmstadt.ukp.clarin.webanno.ui.core.logout;
 
 import static de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior.enabledWhen;
 import static de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior.visibleWhen;
-import static org.apache.commons.lang3.StringUtils.isNotBlank;
-
-import java.util.Optional;
+import static org.apache.commons.lang3.StringUtils.isBlank;
+import static org.apache.commons.lang3.StringUtils.startsWith;
 
 import javax.servlet.http.HttpSession;
 
-import org.apache.wicket.ajax.WicketAjaxJQueryResourceReference;
-import org.apache.wicket.authroles.authentication.AuthenticatedWebSession;
 import org.apache.wicket.devutils.stateless.StatelessComponent;
 import org.apache.wicket.markup.head.IHeaderResponse;
 import org.apache.wicket.markup.head.JavaScriptHeaderItem;
@@ -34,16 +31,21 @@ import org.apache.wicket.markup.head.PriorityHeaderItem;
 import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.link.BookmarkablePageLink;
-import org.apache.wicket.markup.html.link.StatelessLink;
 import org.apache.wicket.markup.html.panel.Panel;
+import org.apache.wicket.model.IModel;
 import org.apache.wicket.protocol.http.servlet.ServletWebRequest;
 import org.apache.wicket.request.Request;
 import org.apache.wicket.request.cycle.RequestCycle;
+import org.apache.wicket.request.flow.RedirectToUrlException;
 import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.SecurityUtil;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
+import de.tudarmstadt.ukp.clarin.webanno.security.config.LoginProperties;
+import de.tudarmstadt.ukp.clarin.webanno.security.config.PreauthenticationProperties;
+import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
+import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaStatelessLink;
+import de.tudarmstadt.ukp.clarin.webanno.ui.core.ApplicationSession;
 import de.tudarmstadt.ukp.clarin.webanno.ui.core.users.ManageUsersPage;
 
 /**
@@ -55,45 +57,52 @@ public class LogoutPanel
 {
     private static final long serialVersionUID = 3725185820083021070L;
 
+    private @SpringBean PreauthenticationProperties preauthenticationProperties;
+    private @SpringBean LoginProperties securityProperties;
     private @SpringBean UserDao userRepository;
 
-    public LogoutPanel(String id)
+    public LogoutPanel(String id, IModel<User> aUser)
     {
-        super(id);
+        super(id, aUser);
 
-        add(new StatelessLink<Void>("logout")
-        {
-            private static final long serialVersionUID = -4031945370627254798L;
+        var logoutLink = new LambdaStatelessLink("logout", this::actionLogout);
+        logoutLink.add(visibleWhen(this::isLogoutEnabled));
+        add(logoutLink);
 
-            @Override
-            public void onClick()
-            {
-                AuthenticatedWebSession.get().signOut();
-                getSession().invalidate();
-                setResponsePage(getApplication().getHomePage());
-            }
-        });
+        var logoutTimer = new WebMarkupContainer("logoutTimer");
+        logoutTimer.add(visibleWhen(() -> getAutoLogoutTime() > 0 && isLogoutEnabled()));
+        add(logoutTimer);
 
-        String username = Optional.ofNullable(userRepository.getCurrentUsername()).orElse("");
-        BookmarkablePageLink<Void> profileLink = new BookmarkablePageLink<>("profile",
-                ManageUsersPage.class,
-                new PageParameters().add(ManageUsersPage.PARAM_USER, username));
-        profileLink.add(enabledWhen(SecurityUtil::isProfileSelfServiceAllowed));
-        profileLink.add(visibleWhen(() -> isNotBlank(username)));
-        profileLink.add(new Label("username", username));
+        var profileLinkParameters = new PageParameters().add(ManageUsersPage.PARAM_USER,
+                getModel().map(User::getUsername).orElse("").getObject());
+        var profileLink = new BookmarkablePageLink<>("profile", ManageUsersPage.class,
+                profileLinkParameters);
+        profileLink.add(enabledWhen(
+                () -> userRepository.isProfileSelfServiceAllowed(getModel().getObject())));
+        profileLink.add(visibleWhen(getModel().isPresent()));
+        profileLink.add(new Label("username", getModel().map(User::getUiName)));
         add(profileLink);
 
-        WebMarkupContainer logoutTimer = new WebMarkupContainer("logoutTimer");
-        logoutTimer.add(visibleWhen(() -> getAutoLogoutTime() > 0));
-        add(logoutTimer);
+        add(visibleWhen(
+                () -> ApplicationSession.exists() && ApplicationSession.get().isSignedIn()));
     }
 
-    @Override
-    protected void onConfigure()
+    private boolean isLogoutEnabled()
     {
-        super.onConfigure();
+        // Logout is disabled for external (OAuth2) users if autoLogin is enabled.
+        // Pre-authenticated users do not count as external users here as we may have a logout
+        // link from the IdP configured
+        if (startsWith(getModel().getObject().getRealm(), UserDao.REALM_EXTERNAL_PREFIX)) {
+            return isBlank(securityProperties.getAutoLogin());
+        }
 
-        setVisible(AuthenticatedWebSession.get().isSignedIn());
+        return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    public IModel<User> getModel()
+    {
+        return (IModel<User>) getDefaultModel();
     }
 
     @Override
@@ -104,15 +113,26 @@ public class LogoutPanel
         aResponse.render(new PriorityHeaderItem(JavaScriptHeaderItem.forReference(
                 getApplication().getJavaScriptLibrarySettings().getJQueryReference())));
 
-        // We use calls from this library to show the logout timer
-        aResponse.render(new PriorityHeaderItem(
-                JavaScriptHeaderItem.forReference(WicketAjaxJQueryResourceReference.get())));
+        aResponse.render(
+                JavaScriptHeaderItem.forReference(LogoutTimerJavascriptResourceReference.get()));
 
         int timeout = getAutoLogoutTime();
         if (timeout > 0) {
             aResponse.render(JavaScriptHeaderItem.forScript(
                     "$(document).ready(function() { new LogoutTimer(" + timeout + "); });",
                     "webAnnoAutoLogout"));
+        }
+    }
+
+    private void actionLogout()
+    {
+        ApplicationSession.get().signOut();
+
+        if (preauthenticationProperties.getLogoutUrl().isPresent()) {
+            throw new RedirectToUrlException(preauthenticationProperties.getLogoutUrl().get());
+        }
+        else {
+            setResponsePage(getApplication().getHomePage());
         }
     }
 

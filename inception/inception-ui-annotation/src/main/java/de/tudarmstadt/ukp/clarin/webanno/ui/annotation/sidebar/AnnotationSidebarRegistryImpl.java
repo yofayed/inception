@@ -17,8 +17,9 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.ui.annotation.sidebar;
 
+import static java.util.Collections.unmodifiableList;
+
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -32,6 +33,8 @@ import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 import org.springframework.stereotype.Component;
+
+import de.tudarmstadt.ukp.clarin.webanno.support.logging.BaseLoggers;
 
 @Component
 public class AnnotationSidebarRegistryImpl
@@ -64,12 +67,14 @@ public class AnnotationSidebarRegistryImpl
             exts.sort(buildComparator());
 
             for (AnnotationSidebarFactory fs : exts) {
-                log.info("Found annotation sidebar extension: {}",
+                log.debug("Found annotation sidebar extension: {}",
                         ClassUtils.getAbbreviatedName(fs.getClass(), 20));
             }
         }
 
-        extensions = Collections.unmodifiableList(exts);
+        BaseLoggers.BOOT_LOG.info("Found [{}] annotation sidebar extensions", exts.size());
+
+        extensions = unmodifiableList(exts);
     }
 
     @Override

@@ -17,6 +17,7 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.ui.core.menu;
 
+import static de.tudarmstadt.ukp.clarin.webanno.support.logging.BaseLoggers.BOOT_LOG;
 import static java.util.Collections.emptyList;
 
 import java.util.ArrayList;
@@ -65,7 +66,7 @@ public class MenuItemRegistryImpl
             AnnotationAwareOrderComparator.sort(exts);
 
             for (MenuItem fs : exts) {
-                log.info("Found menu item: {}", ClassUtils.getAbbreviatedName(fs.getClass(), 20));
+                log.debug("Found menu item: {}", ClassUtils.getAbbreviatedName(fs.getClass(), 20));
 
                 if (fs.getPageClass() == null) {
                     throw new IllegalStateException("Menu item [" + fs.getClass().getName()
@@ -73,6 +74,8 @@ public class MenuItemRegistryImpl
                 }
             }
         }
+
+        BOOT_LOG.info("Found [{}] menu items", exts.size());
 
         extensions = Collections.unmodifiableList(exts);
     }

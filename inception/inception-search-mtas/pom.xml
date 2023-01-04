@@ -20,7 +20,7 @@
   <parent>
     <groupId>de.tudarmstadt.ukp.inception.app</groupId>
     <artifactId>inception-app</artifactId>
-    <version>0.20.0-SNAPSHOT</version>
+    <version>27.0-SNAPSHOT</version>
   </parent>
   <artifactId>inception-search-mtas</artifactId>
   <name>INCEpTION - Search - MTAS</name>
@@ -31,11 +31,11 @@
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-api-dao</artifactId>
+      <artifactId>inception-api-annotation</artifactId>
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-api-annotation</artifactId>
+      <artifactId>inception-api-schema</artifactId>
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
@@ -47,9 +47,12 @@
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-preferences</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-model</artifactId>
     </dependency>
-
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-search-core</artifactId>
@@ -105,15 +108,19 @@
 
     <dependency>
       <groupId>org.springframework</groupId>
-      <artifactId>spring-context</artifactId>
+      <artifactId>spring-core</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-autoconfigure</artifactId>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-context</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-beans</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-autoconfigure</artifactId>
     </dependency>
 
     <dependency>
@@ -131,21 +138,10 @@
       <artifactId>fastutil</artifactId>
     </dependency>
 
-    <!-- Testing -->
-
+    <!-- DEPENDENCIES FOR TESTING -->
     <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.mockito</groupId>
-      <artifactId>mockito-core</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-test</artifactId>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -154,8 +150,33 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>com.h2database</groupId>
-      <artifactId>h2</artifactId>
+      <groupId>org.hsqldb</groupId>
+      <artifactId>hsqldb</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-schema</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-diag</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-documents</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-annotation-storage</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-export</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -190,17 +211,17 @@
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
+      <artifactId>inception-scheduling</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
       <artifactId>inception-project</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-api-formats</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>de.tudarmstadt.ukp.inception.app</groupId>
-      <artifactId>inception-curation-legacy</artifactId>
+      <artifactId>inception-project-initializers</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -214,11 +235,6 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>javax.persistence</groupId>
-      <artifactId>javax.persistence-api</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
       <scope>test</scope>
@@ -229,18 +245,8 @@
         </exclusion>
       </exclusions>
     </dependency>
-    <dependency>
-      <groupId>org.assertj</groupId>
-      <artifactId>assertj-core</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.awaitility</groupId>
-      <artifactId>awaitility</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <!-- Testing END -->
   </dependencies>  
+  
   <build>
     <pluginManagement>
       <plugins>
@@ -248,6 +254,10 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-dependency-plugin</artifactId>
           <configuration>
+            <ignoredDependencies>
+            <!-- Plugin does not get it... -->
+              <ignoredDependency>org.springframework:spring-core</ignoredDependency>
+            </ignoredDependencies>
             <usedDependencies>
               <usedDependency>commons-lang:commons-lang</usedDependency>
             </usedDependencies>
@@ -255,4 +265,48 @@
         </plugin>
       </plugins>
     </pluginManagement>
-  </build></project>
+    <plugins>
+      <plugin>
+        <!--generate types dynamically -->
+        <groupId>org.apache.uima</groupId>
+        <artifactId>jcasgen-maven-plugin</artifactId>
+        <version>${uima.version}</version>
+        <configuration>
+          <limitToProject>true</limitToProject>
+          <outputDirectory>${project.build.directory}/generated-test-sources/jcasgen</outputDirectory>
+          <typeSystemIncludes>
+            <include>src/test/resources/desc/type/**/*.xml</include>
+          </typeSystemIncludes>
+        </configuration>
+        <executions>
+          <execution>
+            <phase>generate-test-sources</phase>
+            <goals>
+              <goal>generate</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>addToSourceFolder</id>
+            <goals>
+              <!--add the generated sources -->
+              <goal>add-test-source</goal>
+            </goals>
+            <phase>process-test-sources</phase>
+            <configuration>
+              <sources>
+                <!--default path to generated sources -->
+                <source>${project.build.directory}/generated-test-sources/jcasgen</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

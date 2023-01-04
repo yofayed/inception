@@ -17,8 +17,9 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.diag.checks;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,53 +27,46 @@ import java.util.List;
 
 import org.apache.uima.fit.factory.JCasFactory;
 import org.apache.uima.jcas.JCas;
-import org.dkpro.core.testing.DkproTestContext;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
-import de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
+import de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst;
 import de.tudarmstadt.ukp.clarin.webanno.support.logging.LogMessage;
 import de.tudarmstadt.ukp.dkpro.core.api.coref.type.CoreferenceChain;
 import de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Token;
 import de.tudarmstadt.ukp.dkpro.core.api.syntax.type.dependency.Dependency;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
 
-@RunWith(SpringRunner.class)
+@ExtendWith(SpringExtension.class)
 public class NoMultipleIncomingRelationsCheckTest
 {
-
     @Configuration
     @Import({ AnnotationSchemaService.class, NoMultipleIncomingRelationsCheck.class })
     static class Config
     {
     }
 
-    @Rule
-    public DkproTestContext testContext = new DkproTestContext();
-
     @MockBean
     private AnnotationSchemaService annotationService;
 
     @Autowired
-    NoMultipleIncomingRelationsCheck check;
+    NoMultipleIncomingRelationsCheck sut;
 
     @Test
     public void testFail() throws Exception
     {
-
         AnnotationLayer relationLayer = new AnnotationLayer();
         relationLayer.setName(Dependency.class.getName());
 
         relationLayer.setType(WebAnnoConst.RELATION_TYPE);
-        Mockito.when(annotationService.listAnnotationLayer(Mockito.isNull()))
+        when(annotationService.listAnnotationLayer(Mockito.isNull()))
                 .thenReturn(Arrays.asList(relationLayer));
 
         JCas jcas = JCasFactory.createJCas();
@@ -100,7 +94,7 @@ public class NoMultipleIncomingRelationsCheckTest
 
         List<LogMessage> messages = new ArrayList<>();
 
-        boolean result = check.check(null, jcas.getCas(), messages);
+        boolean result = sut.check(null, jcas.getCas(), messages);
 
         messages.forEach(System.out::println);
 
@@ -149,7 +143,7 @@ public class NoMultipleIncomingRelationsCheckTest
 
         List<LogMessage> messages = new ArrayList<>();
 
-        boolean result = check.check(null, jcas.getCas(), messages);
+        boolean result = sut.check(null, jcas.getCas(), messages);
 
         messages.forEach(System.out::println);
 
@@ -192,7 +186,7 @@ public class NoMultipleIncomingRelationsCheckTest
 
         List<LogMessage> messages = new ArrayList<>();
 
-        boolean result = check.check(null, jcas.getCas(), messages);
+        boolean result = sut.check(null, jcas.getCas(), messages);
 
         messages.forEach(System.out::println);
 

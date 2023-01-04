@@ -21,7 +21,6 @@ import static de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior.vi
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 import org.apache.wicket.behavior.AttributeAppender;
 import org.apache.wicket.markup.html.WebMarkupContainer;
@@ -40,16 +39,17 @@ import org.dkpro.statistics.agreement.unitizing.IUnitizingAnnotationStudy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import de.agilecoders.wicket.core.markup.html.bootstrap.components.PopoverBehavior;
 import de.agilecoders.wicket.core.markup.html.bootstrap.components.PopoverConfig;
 import de.agilecoders.wicket.core.markup.html.bootstrap.components.TooltipConfig.Placement;
 import de.tudarmstadt.ukp.clarin.webanno.agreement.AgreementResult;
 import de.tudarmstadt.ukp.clarin.webanno.agreement.PairwiseAnnotationResult;
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
 import de.tudarmstadt.ukp.clarin.webanno.api.ProjectService;
+import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
 import de.tudarmstadt.ukp.clarin.webanno.support.DefaultRefreshingView;
 import de.tudarmstadt.ukp.clarin.webanno.support.DescriptionTooltipBehavior;
+import de.tudarmstadt.ukp.clarin.webanno.support.bootstrap.PopoverBehavior;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
 
 public class PairwiseUnitizingAgreementTable
     extends Panel
@@ -62,6 +62,7 @@ public class PairwiseUnitizingAgreementTable
     private @SpringBean AnnotationSchemaService annotationService;
     private @SpringBean DocumentService documentService;
     private @SpringBean ProjectService projectService;
+    private @SpringBean UserDao userRepository;
 
     private final RefreshingView<String> rows;
 
@@ -127,11 +128,13 @@ public class PairwiseUnitizingAgreementTable
                         }
                         // Raters header horizontally
                         else if (aRowItem.getIndex() == 0 && aCellItem.getIndex() != 0) {
-                            cell.add(new Label("label", Model.of(aCellItem.getModelObject())));
+                            cell.add(new Label("label",
+                                    userRepository.get(aCellItem.getModelObject()).getUiName()));
                         }
                         // Raters header vertically
                         else if (aRowItem.getIndex() != 0 && aCellItem.getIndex() == 0) {
-                            cell.add(new Label("label", Model.of(aRowItem.getModelObject())));
+                            cell.add(new Label("label",
+                                    userRepository.get(aRowItem.getModelObject()).getUiName()));
                         }
                         // Upper diagonal
                         else if (aCellItem.getIndex() > aRowItem.getIndex()) {
@@ -157,7 +160,6 @@ public class PairwiseUnitizingAgreementTable
             }
         };
 
-        Set<String> raters = getModelObject().getRaters();
         this.add(visibleWhen(
                 () -> (getModelObject() != null && !getModelObject().getRaters().isEmpty())));
         add(rows);
@@ -235,7 +237,7 @@ public class PairwiseUnitizingAgreementTable
                         getNonNullCount(result, 0), result.getStudy().getUnitCount(0))
                 + String.format("- %s: %d/%d%n", result.getCasGroupIds().get(1),
                         getNonNullCount(result, 1), result.getStudy().getUnitCount(1))
-                + String.format("Distinct labels used: %d%n", result.getStudy().getCategoryCount());
+                + String.format("Distinct labels: %d%n", result.getStudy().getCategoryCount());
 
         Label l = new Label("label", Model.of(label));
         DescriptionTooltipBehavior tooltip = new DescriptionTooltipBehavior(tooltipTitle,

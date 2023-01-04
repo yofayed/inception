@@ -18,8 +18,9 @@
 package de.tudarmstadt.ukp.clarin.webanno.ui.core.page;
 
 import static java.lang.String.format;
-import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
+
+import java.util.stream.Stream;
 
 import javax.persistence.NoResultException;
 
@@ -53,18 +54,36 @@ public abstract class ProjectPageBase
     public ProjectPageBase(final PageParameters aParameters)
     {
         super(aParameters);
+
+        if (getProjectModel().getObject() == null) {
+            getSession().error(
+                    format("[%s] requires a project to be selected", getClass().getSimpleName()));
+            throw new RestartResponseException(getApplication().getHomePage());
+        }
     }
 
-    protected final void requireProjectRole(User aUser, PermissionLevel... aRoles)
+    protected final void requireAnyProjectRole(User aUser)
+    {
+        Project project = getProjectModel().getObject();
+
+        if (aUser == null || !projectService.hasAnyRole(aUser, project)) {
+            getSession().error(format("To access the [%s] you need to be a member of the project",
+                    getClass().getSimpleName()));
+            backToProjectPage();
+        }
+    }
+
+    protected final void requireProjectRole(User aUser, PermissionLevel aRole,
+            PermissionLevel... aMoreRoles)
     {
         Project project = getProjectModel().getObject();
 
         // Check access to project
-        if (!projectService.hasRole(aUser, project, aRoles)) {
-            getSession().error(format(
-                    "You require any of the [%s] roles to access the [%s] for project [%s]",
-                    asList(aRoles).stream().map(PermissionLevel::getId).collect(joining(", ")),
-                    getClass().getSimpleName(), project.getName()));
+        if (aUser == null || !projectService.hasRole(aUser, project, aRole, aMoreRoles)) {
+            var roles = Stream.concat(Stream.of(aRole), Stream.of(aMoreRoles));
+            getSession().error(format("To access the [%s] you require any of these roles: [%s]",
+                    getClass().getSimpleName(),
+                    roles.map(PermissionLevel::getId).collect(joining(", "))));
 
             backToProjectPage();
         }
@@ -75,8 +94,9 @@ public abstract class ProjectPageBase
         Class<? extends Page> projectDashboard = WicketObjects.resolveClass(
                 "de.tudarmstadt.ukp.inception.ui.core.dashboard.project.ProjectDashboardPage");
 
-        setResponsePage(projectDashboard,
-                new PageParameters().set(PAGE_PARAM_PROJECT, getProject().getId()));
+        PageParameters pageParameters = new PageParameters();
+        setProjectPageParameter(pageParameters, getProject());
+        throw new RestartResponseException(projectDashboard, pageParameters);
     }
 
     protected void setProjectModel(IModel<Project> aModel)
@@ -101,7 +121,12 @@ public abstract class ProjectPageBase
 
     public Project getProjectFromParameters()
     {
-        StringValue projectParameter = getPageParameters().get(PAGE_PARAM_PROJECT);
+        return getProjectFromParameters(this, projectService);
+    }
+
+    public static Project getProjectFromParameters(Page aPage, ProjectService aProjectService)
+    {
+        StringValue projectParameter = aPage.getPageParameters().get(PAGE_PARAM_PROJECT);
 
         if (projectParameter.isEmpty()) {
             return null;
@@ -109,17 +134,27 @@ public abstract class ProjectPageBase
 
         try {
             try {
-                return projectService.getProject(projectParameter.toLong());
+                return aProjectService.getProject(projectParameter.toLong());
             }
             catch (StringValueConversionException e) {
-                // Ignore lookup by ID and try lookup by name instead.
+                // Ignore lookup by ID and try lookup by slug instead.
             }
 
-            return projectService.getProject(projectParameter.toString());
+            return aProjectService.getProjectBySlug(projectParameter.toString());
         }
         catch (NoResultException e) {
-            getSession().error("Project [" + projectParameter + "] does not exist");
-            throw new RestartResponseException(getApplication().getHomePage());
+            aPage.getSession().error("Project [" + projectParameter + "] does not exist");
+            throw new RestartResponseException(aPage.getApplication().getHomePage());
+        }
+    }
+
+    public static void setProjectPageParameter(PageParameters aParameters, Project aProject)
+    {
+        if (aProject.getSlug() != null) {
+            aParameters.set(PAGE_PARAM_PROJECT, aProject.getSlug());
+        }
+        else {
+            aParameters.set(PAGE_PARAM_PROJECT, aProject.getId());
         }
     }
 }

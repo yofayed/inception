@@ -27,12 +27,17 @@ import org.apache.uima.resource.ResourceInitializationException;
 import org.apache.uima.resource.metadata.TypeSystemDescription;
 import org.dkpro.core.io.bincas.BinaryCasReader;
 import org.dkpro.core.io.bincas.BinaryCasWriter;
-import org.springframework.stereotype.Component;
 
 import de.tudarmstadt.ukp.clarin.webanno.api.format.FormatSupport;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
+import de.tudarmstadt.ukp.clarin.webanno.xmi.config.UimaFormatsAutoConfiguration;
 
-@Component
+/**
+ * <p>
+ * This class is exposed as a Spring Component via
+ * {@link UimaFormatsAutoConfiguration#binaryCasFormatSupport}.
+ * </p>
+ */
 public class BinaryCasFormatSupport
     implements FormatSupport
 {
@@ -59,6 +64,12 @@ public class BinaryCasFormatSupport
 
     @Override
     public boolean isWritable()
+    {
+        return true;
+    }
+
+    @Override
+    public boolean isProneToInconsistencies()
     {
         return true;
     }

@@ -66,6 +66,9 @@ public class ExportedKnowledgeBase
     @JsonProperty("read_only")
     private boolean readOnly;
 
+    @JsonProperty("use_fuzzy")
+    private boolean useFuzzy;
+
     @JsonProperty("enabled")
     private boolean enabled;
 
@@ -80,6 +83,9 @@ public class ExportedKnowledgeBase
 
     @JsonProperty("root_concepts")
     private List<String> rootConcepts;
+
+    @JsonProperty("additional_matching_properties")
+    private List<String> additionalMatchingProperties;
 
     @JsonProperty("default_language")
     private String defaultLanguage;
@@ -99,6 +105,9 @@ public class ExportedKnowledgeBase
     // set to null for local knowledge bases
     @JsonProperty("remote_url")
     private String remoteURL;
+
+    @JsonProperty("traits")
+    private String traits;
 
     public String getId()
     {
@@ -282,6 +291,16 @@ public class ExportedKnowledgeBase
         rootConcepts = aRootConcepts;
     }
 
+    public void setAdditionalMatchingProperties(List<String> aAdditionalMatchingProperties)
+    {
+        additionalMatchingProperties = aAdditionalMatchingProperties;
+    }
+
+    public List<String> getAdditionalMatchingProperties()
+    {
+        return additionalMatchingProperties;
+    }
+
     public String getDefaultLanguage()
     {
         return defaultLanguage;
@@ -330,5 +349,25 @@ public class ExportedKnowledgeBase
     public void setDefaultDatasetIri(String aDefaultDatasetIri)
     {
         defaultDatasetIri = aDefaultDatasetIri;
+    }
+
+    public void setUseFuzzy(boolean aUseFuzzy)
+    {
+        useFuzzy = aUseFuzzy;
+    }
+
+    public boolean isUseFuzzy()
+    {
+        return useFuzzy;
+    }
+
+    public String getTraits()
+    {
+        return traits;
+    }
+
+    public void setTraits(String aTraits)
+    {
+        traits = aTraits;
     }
 }

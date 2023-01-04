@@ -17,13 +17,15 @@
  */
 package de.tudarmstadt.ukp.inception.recommendation.imls.lapps;
 
-import static de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst.SPAN_TYPE;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.SPAN_TYPE;
 import static de.tudarmstadt.ukp.inception.recommendation.imls.lapps.traits.LappsGridRecommenderTraitsEditor.NER_FEATURE;
 import static de.tudarmstadt.ukp.inception.recommendation.imls.lapps.traits.LappsGridRecommenderTraitsEditor.NER_LAYER;
 import static de.tudarmstadt.ukp.inception.recommendation.imls.lapps.traits.LappsGridRecommenderTraitsEditor.POS_FEATURE;
 import static de.tudarmstadt.ukp.inception.recommendation.imls.lapps.traits.LappsGridRecommenderTraitsEditor.POS_LAYER;
 
 import org.apache.wicket.model.IModel;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import de.tudarmstadt.ukp.clarin.webanno.model.AnchoringMode;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
@@ -42,6 +44,7 @@ import de.tudarmstadt.ukp.inception.recommendation.imls.lapps.traits.LappsGridRe
  * {@link LappsGridRecommenderAutoConfiguration#lappsGridRecommenderFactory()}.
  * </p>
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class LappsGridRecommenderFactory
     extends RecommendationEngineFactoryImplBase<LappsGridRecommenderTraits>
 {

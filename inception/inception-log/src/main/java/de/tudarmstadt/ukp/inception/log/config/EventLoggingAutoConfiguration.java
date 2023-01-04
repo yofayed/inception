@@ -23,15 +23,20 @@ import javax.persistence.EntityManager;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 
+import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
 import de.tudarmstadt.ukp.inception.log.EventLoggingListener;
 import de.tudarmstadt.ukp.inception.log.EventRepository;
 import de.tudarmstadt.ukp.inception.log.EventRepositoryImpl;
 import de.tudarmstadt.ukp.inception.log.adapter.EventLoggingAdapter;
+import de.tudarmstadt.ukp.inception.log.adapter.EventLoggingAdapterRegistry;
+import de.tudarmstadt.ukp.inception.log.adapter.EventLoggingAdapterRegistryImpl;
+import de.tudarmstadt.ukp.inception.log.exporter.LoggedEventExporter;
 
 /**
  * Provides support event logging.
@@ -50,10 +55,28 @@ public class EventLoggingAutoConfiguration
 
     @Bean
     @Autowired
-    public EventLoggingListener eventLoggingListener(EventRepository aRepo,
-            @Lazy @Autowired(required = false) List<EventLoggingAdapter<?>> aAdapters,
-            EventLoggingProperties aProperties)
+    public EventLoggingAdapterRegistry eventLoggingAdapterRegistry(
+            @Lazy @Autowired(required = false) List<EventLoggingAdapter<?>> aAdapters)
     {
-        return new EventLoggingListener(aRepo, aAdapters, aProperties);
+        return new EventLoggingAdapterRegistryImpl(aAdapters);
+    }
+
+    // When running in CLI mode, we usually perform bulk actions. We should not log these all.
+    // Also, the CLI may shut down very fast (e.g. when displaying help) and close the DB before all
+    // pending events would have been flushed which would create an exception.
+    @ConditionalOnWebApplication
+    @Bean
+    @Autowired
+    public EventLoggingListener eventLoggingListener(EventRepository aRepo,
+            EventLoggingAdapterRegistry aAdapterRegistry, EventLoggingProperties aProperties)
+    {
+        return new EventLoggingListener(aRepo, aProperties, aAdapterRegistry);
+    }
+
+    @Bean
+    public LoggedEventExporter loggedEventExporter(EventRepository aEventRepository,
+            DocumentService aDocumentService)
+    {
+        return new LoggedEventExporter(aEventRepository, aDocumentService);
     }
 }

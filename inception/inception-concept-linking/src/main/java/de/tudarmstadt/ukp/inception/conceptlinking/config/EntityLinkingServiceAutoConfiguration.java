@@ -28,8 +28,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.RepositoryProperties;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupportRegistry;
+import de.tudarmstadt.ukp.clarin.webanno.api.config.RepositoryProperties;
+import de.tudarmstadt.ukp.inception.conceptlinking.feature.CasingFeatureGenerator;
 import de.tudarmstadt.ukp.inception.conceptlinking.feature.EntityRankingFeatureGenerator;
 import de.tudarmstadt.ukp.inception.conceptlinking.feature.FrequencyFeatureGenerator;
 import de.tudarmstadt.ukp.inception.conceptlinking.feature.LevenshteinFeatureGenerator;
@@ -42,6 +42,7 @@ import de.tudarmstadt.ukp.inception.kb.KnowledgeBaseService;
 import de.tudarmstadt.ukp.inception.kb.config.KnowledgeBaseServiceAutoConfiguration;
 import de.tudarmstadt.ukp.inception.recommendation.api.RecommendationService;
 import de.tudarmstadt.ukp.inception.recommendation.config.RecommenderServiceAutoConfiguration;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupportRegistry;
 
 @Configuration
 @AutoConfigureAfter({ KnowledgeBaseServiceAutoConfiguration.class,
@@ -66,6 +67,12 @@ public class EntityLinkingServiceAutoConfiguration
     public EntityLinkingProperties entityLinkingProperties()
     {
         return new EntityLinkingPropertiesImpl();
+    }
+
+    @Bean
+    public CasingFeatureGenerator casingFeatureGenerator()
+    {
+        return new CasingFeatureGenerator();
     }
 
     @Bean

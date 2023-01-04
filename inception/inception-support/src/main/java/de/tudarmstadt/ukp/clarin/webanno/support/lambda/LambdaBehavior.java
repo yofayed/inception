@@ -21,12 +21,28 @@ import org.apache.wicket.Component;
 import org.apache.wicket.behavior.Behavior;
 import org.apache.wicket.event.IEvent;
 import org.apache.wicket.markup.ComponentTag;
+import org.apache.wicket.model.IModel;
+import org.danekja.java.misc.serializable.SerializableRunnable;
 import org.danekja.java.util.function.serializable.SerializableBiConsumer;
 import org.danekja.java.util.function.serializable.SerializableBooleanSupplier;
 import org.danekja.java.util.function.serializable.SerializableConsumer;
 
 public class LambdaBehavior
 {
+    public static Behavior onConfigure(SerializableRunnable aAction)
+    {
+        return new Behavior()
+        {
+            private static final long serialVersionUID = -6144591383577622961L;
+
+            @Override
+            public void onConfigure(Component aComponent)
+            {
+                aAction.run();
+            }
+        };
+    }
+
     public static Behavior onConfigure(SerializableConsumer<Component> aAction)
     {
         return new Behavior()
@@ -106,6 +122,34 @@ public class LambdaBehavior
                 && aComponent.getDefaultModelObject() != null);
     }
 
+    public static Behavior visibleWhenNot(IModel<Boolean> aPredicate)
+    {
+        return new Behavior()
+        {
+            private static final long serialVersionUID = -1497070163140324582L;
+
+            @Override
+            public void onConfigure(Component aComponent)
+            {
+                aComponent.setVisible(!aPredicate.orElse(false).getObject());
+            }
+        };
+    }
+
+    public static Behavior visibleWhen(IModel<Boolean> aPredicate)
+    {
+        return new Behavior()
+        {
+            private static final long serialVersionUID = -1497070163140324582L;
+
+            @Override
+            public void onConfigure(Component aComponent)
+            {
+                aComponent.setVisible(aPredicate.orElse(false).getObject());
+            }
+        };
+    }
+
     public static Behavior visibleWhen(SerializableBooleanSupplier aPredicate)
     {
         return new Behavior()
@@ -130,6 +174,34 @@ public class LambdaBehavior
             public void onConfigure(Component aComponent)
             {
                 aComponent.setEnabled(aPredicate.getAsBoolean());
+            }
+        };
+    }
+
+    public static Behavior enabledWhen(IModel<Boolean> aPredicate)
+    {
+        return new Behavior()
+        {
+            private static final long serialVersionUID = -6211897935146512830L;
+
+            @Override
+            public void onConfigure(Component aComponent)
+            {
+                aComponent.setEnabled(aPredicate.getObject());
+            }
+        };
+    }
+
+    public static Behavior enabledWhenNot(IModel<Boolean> aPredicate)
+    {
+        return new Behavior()
+        {
+            private static final long serialVersionUID = -689186261780722442L;
+
+            @Override
+            public void onConfigure(Component aComponent)
+            {
+                aComponent.setEnabled(!aPredicate.orElse(false).getObject());
             }
         };
     }

@@ -29,8 +29,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.MockitoAnnotations.initMocks;
 
+import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -40,16 +40,15 @@ import org.eclipse.rdf4j.model.vocabulary.OWL;
 import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.eclipse.rdf4j.model.vocabulary.RDFS;
 import org.eclipse.rdf4j.repository.sparql.config.SPARQLRepositoryConfig;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
-import de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst;
-import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectExportRequest;
+import de.tudarmstadt.ukp.clarin.webanno.api.export.FullProjectExportRequest;
 import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectExportTaskMonitor;
 import de.tudarmstadt.ukp.clarin.webanno.api.export.ProjectImportRequest;
 import de.tudarmstadt.ukp.clarin.webanno.export.model.ExportedProject;
@@ -57,10 +56,13 @@ import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.support.JSONUtil;
+import de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst;
 import de.tudarmstadt.ukp.inception.kb.config.KnowledgeBasePropertiesImpl;
 import de.tudarmstadt.ukp.inception.kb.exporter.KnowledgeBaseExporter;
 import de.tudarmstadt.ukp.inception.kb.model.KnowledgeBase;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
 
+@ExtendWith(MockitoExtension.class)
 public class KnowledgeBaseExporterTest
 {
     private static final String TestURLEndpoint = "https://collection.britishmuseum.org/sparql";
@@ -71,15 +73,13 @@ public class KnowledgeBaseExporterTest
     private Project sourceProject;
     private Project targetProject;
 
-    public @Rule TemporaryFolder temporaryFolder = new TemporaryFolder();
+    public @TempDir File temporaryFolder;
 
     private KnowledgeBaseExporter sut;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception
     {
-        initMocks(this);
-
         sourceProject = new Project();
         sourceProject.setId(1l);
         sourceProject.setName("Test Project");
@@ -104,11 +104,12 @@ public class KnowledgeBaseExporterTest
     public void thatExportingWorks() throws Exception
     {
         // Export the project
-        ProjectExportRequest exportRequest = new ProjectExportRequest();
-        ProjectExportTaskMonitor monitor = new ProjectExportTaskMonitor();
-        exportRequest.setProject(sourceProject);
+        FullProjectExportRequest exportRequest = new FullProjectExportRequest(sourceProject, null,
+                false);
+        ProjectExportTaskMonitor monitor = new ProjectExportTaskMonitor(sourceProject, null,
+                "test");
         ExportedProject exportedProject = new ExportedProject();
-        sut.exportData(exportRequest, monitor, exportedProject, temporaryFolder.getRoot());
+        sut.exportData(exportRequest, monitor, exportedProject, temporaryFolder);
 
         // Import the project again
         ArgumentCaptor<KnowledgeBase> exportKbCaptor = ArgumentCaptor.forClass(KnowledgeBase.class);
@@ -128,7 +129,9 @@ public class KnowledgeBaseExporterTest
         // Verify that importData is called as many times as there are localKBs
         verify(kbService, times(numOfLocalKBs)).importData(any(), any(), any());
 
-        assertThat(exportedKbs).usingElementComparatorIgnoringFields("repositoryId", "project")
+        assertThat(exportedKbs) //
+                .usingRecursiveFieldByFieldElementComparatorIgnoringFields("repositoryId",
+                        "project")
                 .containsExactlyInAnyOrderElementsOf(knowledgeBases());
     }
 
@@ -136,11 +139,12 @@ public class KnowledgeBaseExporterTest
     public void thatRemappingConceptFeaturesOnImportWorks() throws Exception
     {
         // Export the project
-        ProjectExportRequest exportRequest = new ProjectExportRequest();
-        ProjectExportTaskMonitor monitor = new ProjectExportTaskMonitor();
-        exportRequest.setProject(sourceProject);
+        FullProjectExportRequest exportRequest = new FullProjectExportRequest(sourceProject, null,
+                false);
+        ProjectExportTaskMonitor monitor = new ProjectExportTaskMonitor(sourceProject, null,
+                "test");
         ExportedProject exportedProject = new ExportedProject();
-        sut.exportData(exportRequest, monitor, exportedProject, temporaryFolder.getRoot());
+        sut.exportData(exportRequest, monitor, exportedProject, temporaryFolder);
 
         // Mock that the KB ID changes during import when registerKnowledgeBase is called
         doAnswer(i -> {

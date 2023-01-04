@@ -17,10 +17,10 @@
  */
 package de.tudarmstadt.ukp.inception.log.adapter;
 
-import static de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst.SPAN_TYPE;
 import static de.tudarmstadt.ukp.clarin.webanno.model.AnchoringMode.TOKENS;
 import static de.tudarmstadt.ukp.clarin.webanno.model.OverlapMode.STACKING_ONLY;
 import static de.tudarmstadt.ukp.clarin.webanno.support.JSONUtil.toPrettyJsonString;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.SPAN_TYPE;
 import static org.apache.uima.cas.CAS.TYPE_NAME_ANNOTATION;
 import static org.apache.uima.cas.CAS.TYPE_NAME_STRING;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,13 +35,13 @@ import org.apache.uima.resource.metadata.FeatureDescription;
 import org.apache.uima.resource.metadata.TypeDescription;
 import org.apache.uima.resource.metadata.TypeSystemDescription;
 import org.apache.uima.resource.metadata.impl.TypeSystemDescription_impl;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.event.FeatureValueUpdatedEvent;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
+import de.tudarmstadt.ukp.inception.annotation.events.FeatureValueUpdatedEvent;
 import de.tudarmstadt.ukp.inception.log.exporter.ExportedLoggedEvent;
 import de.tudarmstadt.ukp.inception.log.model.LoggedEvent;
 
@@ -54,7 +54,7 @@ public class FeatureValueUpdatedEventAdapterTest
         TypeDescription typeDesc = tsd.addType("customType", "desc", TYPE_NAME_ANNOTATION);
         FeatureDescription featDesc = typeDesc.addFeature("value", "desc", TYPE_NAME_STRING);
 
-        Project project = new Project("project name");
+        Project project = new Project("test-project");
         project.setId(1l);
         SourceDocument doc = new SourceDocument("document name", project, "format");
         doc.setId(2l);

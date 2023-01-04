@@ -19,25 +19,29 @@
 <html xmlns:wicket="http://wicket.apache.org">
 <body>
   <wicket:panel>
-    <form wicket:id="form" class="flex-content flex-v-container">
+    <form wicket:id="form" class="card border-0 flex-content flex-v-container">
       <div class="flex-content flex-v-container">
-        <div class="card-header">
+        <div class="card-header rounded-0">
           <div class="flex-h-container flex-centered flex-gutter flex-only-internal-gutter">
-            <div class="mr-auto">
+            <div class="me-auto">
               <wicket:message key="permissions.for"/> "<wicket:container wicket:id="username"/>"
             </div>
             <button wicket:id="save" class="btn btn-primary">
-              <i class="fas fa-save"></i>&nbsp;
-              <wicket:message key="save"/>
+              <i class="fas fa-save"></i>
+              <span class="d-none d-lg-inline">
+                &nbsp;<wicket:message key="save"/>
+              </span>
             </button>
             <button wicket:id="cancel" class="btn btn-secondary">
-              <i class="fas fa-times"></i>&nbsp;
-              <wicket:message key="cancel"/>
+              <i class="fas fa-times"></i>
+              <span class="d-none d-lg-inline">
+                &nbsp;<wicket:message key="cancel"/>
+              </span>
             </button>
           </div>
         </div>
         <div class="card-body">
-          <div class="form-group">
+          <div class="">
             <div wicket:id="permissions"></div>
           </div>
         </div>

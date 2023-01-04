@@ -20,18 +20,15 @@ package de.tudarmstadt.ukp.clarin.webanno.brat.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
 import org.springframework.jmx.export.annotation.ManagedResource;
-import org.springframework.stereotype.Component;
 
-@Component
 @ConfigurationProperties("ui.brat")
 @ManagedResource
 public class BratAnnotationEditorPropertiesImpl
     implements BratAnnotationEditorProperties
 {
     private boolean singleClickSelection = false;
-    private boolean deferredRendering = false;
     private boolean clientSideProfiling = false;
-    private boolean clientSideTraceLog = false;
+    private String whiteSpaceReplacementCharacter = REPLACEMENT_CHARACTER;
 
     @ManagedAttribute
     @Override
@@ -48,19 +45,6 @@ public class BratAnnotationEditorPropertiesImpl
 
     @ManagedAttribute
     @Override
-    public boolean isDeferredRendering()
-    {
-        return deferredRendering;
-    }
-
-    @ManagedAttribute
-    public void setDeferredRendering(boolean aDeferredRendering)
-    {
-        deferredRendering = aDeferredRendering;
-    }
-
-    @ManagedAttribute
-    @Override
     public boolean isClientSideProfiling()
     {
         return clientSideProfiling;
@@ -72,16 +56,14 @@ public class BratAnnotationEditorPropertiesImpl
         clientSideProfiling = aClientSideProfiling;
     }
 
-    @ManagedAttribute
     @Override
-    public boolean isClientSideTraceLog()
+    public String getWhiteSpaceReplacementCharacter()
     {
-        return clientSideTraceLog;
+        return whiteSpaceReplacementCharacter;
     }
 
-    @ManagedAttribute
-    public void setClientSideTraceLog(boolean aClientSideTraceLog)
+    public void setWhiteSpaceReplacementCharacter(String aWhiteSpaceReplacementCharacter)
     {
-        clientSideTraceLog = aClientSideTraceLog;
+        whiteSpaceReplacementCharacter = aWhiteSpaceReplacementCharacter;
     }
 }

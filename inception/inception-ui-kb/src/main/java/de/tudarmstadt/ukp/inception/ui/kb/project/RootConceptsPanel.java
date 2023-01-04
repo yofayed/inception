@@ -17,7 +17,9 @@
  */
 package de.tudarmstadt.ukp.inception.ui.kb.project;
 
-import java.util.List;
+import static org.apache.commons.lang3.StringUtils.isBlank;
+
+import java.util.ArrayList;
 
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.feedback.IFeedback;
@@ -29,6 +31,7 @@ import org.apache.wicket.markup.html.panel.Panel;
 import org.apache.wicket.model.CompoundPropertyModel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
+import org.apache.wicket.model.util.ListModel;
 import org.apache.wicket.spring.injection.annot.SpringBean;
 import org.eclipse.rdf4j.query.QueryEvaluationException;
 
@@ -42,7 +45,7 @@ public class RootConceptsPanel
 {
     private static final long serialVersionUID = 1161350402387498209L;
     private final CompoundPropertyModel<KnowledgeBaseWrapper> kbModel;
-    private final List<String> concepts;
+    private final ListModel<String> concepts;
     private final IModel<String> newConceptIRIString = Model.of();
 
     private @SpringBean KnowledgeBaseService kbService;
@@ -52,11 +55,10 @@ public class RootConceptsPanel
         super(id);
 
         kbModel = aModel;
-        concepts = kbModel.getObject().getKb().getRootConcepts();
+        concepts = new ListModel<>(new ArrayList<>(kbModel.getObject().getKb().getRootConcepts()));
         setOutputMarkupId(true);
 
-        ListView<String> conceptsListView = new ListView<String>("rootConcepts",
-                kbModel.bind("kb.rootConcepts"))
+        ListView<String> conceptsListView = new ListView<String>("rootConcepts", concepts)
         {
             private static final long serialVersionUID = 1L;
 
@@ -97,28 +99,35 @@ public class RootConceptsPanel
     private void actionNewRootConcept(AjaxRequestTarget aTarget)
     {
         String concept = newConceptIRIString.getObject();
-        if (isConceptValid(kbModel.getObject().getKb(), concept, true)) {
-            concepts.add(concept);
-            newConceptIRIString.setObject(null);
-        }
-        else {
+        if (!isConceptValid(kbModel.getObject().getKb(), concept, true)) {
             error("Concept [" + newConceptIRIString.getObject()
-                    + "] does not exist or has already been specified");
+                    + "]  is not an (absolute) IRI, does not exist, or has already been specified");
             aTarget.addChildren(getPage(), IFeedback.class);
+            return;
         }
+
+        concepts.getObject().add(concept);
+        kbModel.getObject().getKb().setRootConcepts(concepts.getObject());
+        newConceptIRIString.setObject(null);
+
         aTarget.add(this);
     }
 
     private void actionRemoveConcept(AjaxRequestTarget aTarget, String iri)
     {
-        concepts.remove(iri);
+        concepts.getObject().remove(iri);
+        kbModel.getObject().getKb().setRootConcepts(concepts.getObject());
         aTarget.add(this);
     }
 
     public boolean isConceptValid(KnowledgeBase kb, String conceptIRI, boolean aAll)
         throws QueryEvaluationException
     {
-        return kbService.readConcept(kbModel.getObject().getKb(), conceptIRI, true).isPresent()
-                && !concepts.contains(conceptIRI);
+        if (isBlank(conceptIRI)) {
+            return false;
+        }
+
+        return !concepts.getObject().contains(conceptIRI)
+                && kbService.readConcept(kbModel.getObject().getKb(), conceptIRI, true).isPresent();
     }
 }

@@ -18,10 +18,10 @@
 package de.tudarmstadt.ukp.inception.recommendation.evaluation;
 
 import static de.tudarmstadt.ukp.clarin.webanno.api.CasUpgradeMode.AUTO_CAS_UPGRADE;
-import static de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst.CURATION_USER;
-import static de.tudarmstadt.ukp.clarin.webanno.api.WebAnnoConst.INITIAL_CAS_PSEUDO_USER;
 import static de.tudarmstadt.ukp.clarin.webanno.api.casstorage.CasAccessMode.SHARED_READ_ONLY_ACCESS;
 import static de.tudarmstadt.ukp.clarin.webanno.model.PermissionLevel.ANNOTATOR;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.CURATION_USER;
+import static de.tudarmstadt.ukp.clarin.webanno.support.WebAnnoConst.INITIAL_CAS_PSEUDO_USER;
 import static de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior.visibleWhen;
 import static de.tudarmstadt.ukp.inception.recommendation.model.RecommenderEvaluationScoreMetricEnum.Accuracy;
 import static java.util.Collections.emptyList;
@@ -49,13 +49,14 @@ import org.apache.wicket.spring.injection.annot.SpringBean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.select.BootstrapSelect;
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
 import de.tudarmstadt.ukp.clarin.webanno.api.ProjectService;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
+import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxButton;
+import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaChoiceRenderer;
 import de.tudarmstadt.ukp.inception.recommendation.api.RecommenderFactoryRegistry;
 import de.tudarmstadt.ukp.inception.recommendation.api.evaluation.EvaluationResult;
 import de.tudarmstadt.ukp.inception.recommendation.api.evaluation.IncrementalSplitter;
@@ -91,11 +92,11 @@ public class SimulationLearningCurvePanel
 
     private final Project project;
     private final IModel<Recommender> recommender;
-    private final IModel<String> user;
+    private final IModel<User> user;
     private final IModel<RecommenderEvaluationScoreMetricEnum> metric;
 
     private final DropDownChoice<RecommenderEvaluationScoreMetricEnum> metricChoice;
-    private final DropDownChoice<String> annotatorChoice;
+    private final DropDownChoice<User> annotatorChoice;
     private final ChartPanel chartPanel;
 
     private final IModel<List<EvaluationResult>> evaluationResults;
@@ -118,15 +119,16 @@ public class SimulationLearningCurvePanel
         chartPanel.add(visibleWhen(() -> isNotEmpty(chartPanel.getModelObject())));
         form.add(chartPanel);
 
-        metricChoice = new BootstrapSelect<RecommenderEvaluationScoreMetricEnum>("metric", metric,
+        metricChoice = new DropDownChoice<RecommenderEvaluationScoreMetricEnum>("metric", metric,
                 new ListModel<RecommenderEvaluationScoreMetricEnum>(DROPDOWN_VALUES));
         metricChoice.setOutputMarkupId(true);
         form.add(metricChoice);
 
-        IModel<List<String>> annotatorChoiceModel = LoadableDetachableModel
+        IModel<List<User>> annotatorChoiceModel = LoadableDetachableModel
                 .of(this::getSelectableAnnotators);
         user = Model.of(annotatorChoiceModel.getObject().get(0));
-        annotatorChoice = new BootstrapSelect<String>("annotator", user, annotatorChoiceModel);
+        annotatorChoice = new DropDownChoice<User>("annotator", user, annotatorChoiceModel);
+        annotatorChoice.setChoiceRenderer(new LambdaChoiceRenderer<>(User::getUiName));
         annotatorChoice.setOutputMarkupId(true);
         form.add(annotatorChoice);
 
@@ -139,13 +141,12 @@ public class SimulationLearningCurvePanel
         }));
     }
 
-    private List<String> getSelectableAnnotators()
+    private List<User> getSelectableAnnotators()
     {
-        List<String> list = new ArrayList<>();
-        list.add(INITIAL_CAS_PSEUDO_USER);
-        list.add(CURATION_USER);
-        projectService.listProjectUsersWithPermissions(project, ANNOTATOR)
-                .forEach(u -> list.add(u.getUsername()));
+        List<User> list = new ArrayList<>();
+        list.add(new User(INITIAL_CAS_PSEUDO_USER, "<Source document>"));
+        list.add(new User(CURATION_USER, "<Curation document>"));
+        list.addAll(projectService.listProjectUsersWithPermissions(project, ANNOTATOR));
         return list;
     }
 
@@ -170,14 +171,15 @@ public class SimulationLearningCurvePanel
         List<CAS> casList = new ArrayList<>();
         try {
             for (SourceDocument doc : documentService.listSourceDocuments(project)) {
-                if (INITIAL_CAS_PSEUDO_USER.equals(user.getObject())) {
+                if (INITIAL_CAS_PSEUDO_USER.equals(user.getObject().getUsername())) {
                     casList.add(documentService.createOrReadInitialCas(doc, AUTO_CAS_UPGRADE,
                             SHARED_READ_ONLY_ACCESS));
                 }
                 else {
                     if (documentService.existsAnnotationDocument(doc, user.getObject())) {
-                        casList.add(documentService.readAnnotationCas(doc, user.getObject(),
-                                AUTO_CAS_UPGRADE, SHARED_READ_ONLY_ACCESS));
+                        casList.add(documentService.readAnnotationCas(doc,
+                                user.getObject().getUsername(), AUTO_CAS_UPGRADE,
+                                SHARED_READ_ONLY_ACCESS));
                     }
                 }
             }

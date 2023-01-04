@@ -47,6 +47,8 @@ import org.apache.wicket.markup.html.form.Form;
 import org.apache.wicket.markup.html.form.TextField;
 import org.apache.wicket.markup.html.link.BookmarkablePageLink;
 import org.apache.wicket.markup.html.link.Link;
+import org.apache.wicket.markup.html.list.ListItem;
+import org.apache.wicket.markup.html.list.ListView;
 import org.apache.wicket.markup.html.panel.Panel;
 import org.apache.wicket.markup.repeater.Item;
 import org.apache.wicket.model.CompoundPropertyModel;
@@ -59,7 +61,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wicketstuff.annotation.mount.MountPath;
 
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.select.BootstrapSelect;
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
@@ -69,7 +70,7 @@ import de.tudarmstadt.ukp.clarin.webanno.support.spring.ApplicationEventPublishe
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.AnnotationPage;
 import de.tudarmstadt.ukp.clarin.webanno.ui.core.page.ProjectPageBase;
 import de.tudarmstadt.ukp.inception.app.ui.externalsearch.utils.DocumentImporter;
-import de.tudarmstadt.ukp.inception.app.ui.externalsearch.utils.Utilities;
+import de.tudarmstadt.ukp.inception.app.ui.externalsearch.utils.HighlightLabel;
 import de.tudarmstadt.ukp.inception.externalsearch.ExternalSearchHighlight;
 import de.tudarmstadt.ukp.inception.externalsearch.ExternalSearchResult;
 import de.tudarmstadt.ukp.inception.externalsearch.ExternalSearchService;
@@ -166,8 +167,7 @@ public class SearchPage
 
             setModel(CompoundPropertyModel.of(new SearchFormModel()));
 
-            DropDownChoice<DocumentRepository> repositoryCombo = new BootstrapSelect<DocumentRepository>(
-                    "repository");
+            DropDownChoice<DocumentRepository> repositoryCombo = new DropDownChoice<>("repository");
             repositoryCombo.setChoices(LoadableDetachableModel
                     .of(() -> externalSearchService.listDocumentRepositories(getProject())));
             repositoryCombo.setChoiceRenderer(new ChoiceRenderer<DocumentRepository>("name"));
@@ -180,13 +180,12 @@ public class SearchPage
 
             add(new TextField<>("query", String.class));
 
-            LambdaAjaxSubmitLink searchLink = new LambdaAjaxSubmitLink("submitSearch",
-                    this::actionSearch);
+            var searchLink = new LambdaAjaxSubmitLink<Void>("submitSearch", this::actionSearch);
             add(searchLink);
             setDefaultButton(searchLink);
         }
 
-        private void actionSearch(AjaxRequestTarget aTarget, Form<?> aForm)
+        private void actionSearch(AjaxRequestTarget aTarget, Form<Void> aForm)
         {
             SearchFormModel model = getModelObject();
 
@@ -212,31 +211,31 @@ public class SearchPage
     {
         private static final long serialVersionUID = -6708211343231617251L;
 
-        public ResultRowView(String id, long rowNumber, IModel<ExternalSearchResult> model)
+        public ResultRowView(String aId, long aRowNumber, IModel<ExternalSearchResult> aModel)
         {
-            super(id, model);
+            super(aId, aModel);
 
-            ExternalSearchResult result = (ExternalSearchResult) getDefaultModelObject();
+            ExternalSearchResult result = aModel.getObject();
 
-            // FIXME: Should display all highlights
-            String highlight = "NO MATCH PREVIEW AVAILABLE";
-            if (!result.getHighlights().isEmpty()) {
-                StringBuilder sb = new StringBuilder();
-                sb.append("<ul>");
-                for (ExternalSearchHighlight h : result.getHighlights()) {
-                    sb.append("<li>").append(Utilities.cleanHighlight(h.getHighlight()))
-                            .append("</li>");
+            add(new ListView<ExternalSearchHighlight>("highlights", result.getHighlights())
+            {
+                private static final long serialVersionUID = 7281297180627354855L;
+
+                @Override
+                protected void populateItem(ListItem<ExternalSearchHighlight> aItem)
+                {
+                    aItem.add(
+                            new HighlightLabel("highlight", aItem.getModelObject().getHighlight()));
                 }
-                sb.append("</ul>");
-                highlight = sb.toString();
-            }
-            add(new Label("highlight", highlight).setEscapeModelStrings(false));
+            });
 
+            PageParameters titleLinkPageParameters = new PageParameters();
+            ProjectPageBase.setProjectPageParameter(titleLinkPageParameters, getProject());
+            titleLinkPageParameters.set(PAGE_PARAM_REPOSITORY_ID, result.getRepository().getId());
+            titleLinkPageParameters.set(PAGE_PARAM_COLLECTION_ID, result.getCollectionId());
+            titleLinkPageParameters.set(PAGE_PARAM_DOCUMENT_ID, result.getDocumentId());
             Link<Void> link = new BookmarkablePageLink<>("titleLink", DocumentDetailsPage.class,
-                    new PageParameters().add(PAGE_PARAM_PROJECT, getProject().getId())
-                            .add(PAGE_PARAM_REPOSITORY_ID, result.getRepository().getId())
-                            .add(PAGE_PARAM_COLLECTION_ID, result.getCollectionId())
-                            .add(PAGE_PARAM_DOCUMENT_ID, result.getDocumentId()));
+                    titleLinkPageParameters);
             link.add(new Label("title",
                     defaultIfBlank(result.getDocumentTitle(), defaultIfBlank(result.getDocumentId(),
                             defaultIfBlank(result.getOriginalUri(), "<no title>")))));
@@ -251,9 +250,11 @@ public class SearchPage
             add(new LambdaAjaxLink("importLink", _target -> actionImportDocument(_target, result))
                     .add(visibleWhen(() -> !existsSourceDocument)));
 
+            PageParameters openLinkPageParameters = new PageParameters();
+            ProjectPageBase.setProjectPageParameter(openLinkPageParameters, getProject());
+            openLinkPageParameters.set(AnnotationPage.PAGE_PARAM_DOCUMENT, result.getDocumentId());
             Link<Void> openLink = new BookmarkablePageLink<>("openLink", AnnotationPage.class,
-                    new PageParameters().add(PAGE_PARAM_PROJECT, getProject().getId())
-                            .add(AnnotationPage.PAGE_PARAM_DOCUMENT, result.getDocumentId()));
+                    openLinkPageParameters);
             openLink.add(visibleWhen(() -> existsSourceDocument));
             add(openLink);
 

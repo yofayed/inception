@@ -27,6 +27,7 @@ import de.agilecoders.wicket.extensions.markup.html.bootstrap.icon.FontAwesome5I
 import de.tudarmstadt.ukp.clarin.webanno.api.ProjectService;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
 import de.tudarmstadt.ukp.clarin.webanno.ui.core.menu.MenuItem;
+import wicket.contrib.input.events.key.KeyType;
 
 @Component
 @Order(400)
@@ -45,7 +46,7 @@ public class ProjectPageMenuItem
     @Override
     public IconType getIcon()
     {
-        return FontAwesome5IconType.book_s;
+        return FontAwesome5IconType.archive_s;
     }
 
     @Override
@@ -67,5 +68,11 @@ public class ProjectPageMenuItem
     public Class<? extends Page> getPageClass()
     {
         return ProjectSettingsPage.class;
+    }
+
+    @Override
+    public KeyType[] shortcut()
+    {
+        return new KeyType[] { KeyType.Alt, KeyType.p };
     }
 }

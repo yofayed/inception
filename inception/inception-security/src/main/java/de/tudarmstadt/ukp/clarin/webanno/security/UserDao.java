@@ -20,7 +20,10 @@ package de.tudarmstadt.ukp.clarin.webanno.security;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.wicket.validation.ValidationError;
+
 import de.tudarmstadt.ukp.clarin.webanno.security.model.Authority;
+import de.tudarmstadt.ukp.clarin.webanno.security.model.Role;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
 
 /**
@@ -28,10 +31,20 @@ import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
  */
 public interface UserDao
 {
+    static final String ADMIN_DEFAULT_USERNAME = "admin";
+    static final String ADMIN_DEFAULT_PASSWORD = "admin";
+
+    static final String EMPTY_PASSWORD = "";
+
+    static final String REALM_GLOBAL = null;
+    static final String REALM_PROJECT_PREFIX = "project:";
+    static final String REALM_EXTERNAL_PREFIX = "external:";
+    static final String REALM_PREAUTH = "preauth";
+
     User getCurrentUser();
 
     /**
-     * Return the name of the current user
+     * @return the name of the current user
      */
     String getCurrentUsername();
 
@@ -42,8 +55,9 @@ public interface UserDao
      * 
      * @param aUser
      *            the user to create.
+     * @return the user.
      */
-    void create(User aUser);
+    User create(User aUser);
 
     /**
      * Update existing {@link User}
@@ -80,19 +94,23 @@ public interface UserDao
      */
     void delete(User aUser);
 
+    int deleteAllUsersFromRealm(String aString);
+
+    List<User> listAllUsersFromRealm(String aString);
+
     /**
      * get a {@link User} using a username
      * 
      * @param aUsername
      *            the username.
-     * @return the user.
+     * @return the user or {@code null} if the user does not exist
      */
     User get(String aUsername);
 
+    User getUserByRealmAndUiName(String aRealm, String aUiName);
+
     /**
-     * get all users in the system
-     * 
-     * @return the users.
+     * @return all users in the system
      */
     List<User> list();
 
@@ -101,28 +119,85 @@ public interface UserDao
     List<User> listDisabledUsers();
 
     /**
-     * Returns a role of a user, globally we will have ROLE_ADMIN and ROLE_USER
+     * @return the roles of a user, globally we will have ROLE_ADMIN and ROLE_USER
      *
      * @param user
      *            the {@link User} object
-     * @return the roles.
      */
     List<Authority> listAuthorities(User user);
 
     /**
-     * Check if the user has global administrator permissions.
+     * @param aUser
+     *            a user
+     * @return if the user has global administrator permissions.
      */
     boolean isAdministrator(User aUser);
 
     /**
-     * Check if the user has the permission to create projects.
+     * @param aUser
+     *            a user
+     * @return if the user has the permission to create projects.
      */
     boolean isProjectCreator(User aUser);
 
     Set<String> getRoles(User aUser);
 
     /**
-     * Retrieve the number of enabled users
+     * @return the number of enabled users
      */
     long countEnabledUsers();
+
+    List<String> listRealms();
+
+    boolean hasRole(User aUser, Role aRole);
+
+    /**
+     * @param aPassword
+     *            a password.
+     * @return if the given value meets the password policy.
+     */
+    boolean isValidPassword(String aPassword);
+
+    /**
+     * @param aName
+     *            a name.
+     * @return if the name meets the user name policy.
+     */
+    boolean isValidUsername(String aName);
+
+    /**
+     * @param aName
+     *            a name.
+     * @return if the name meets the user name policy.
+     */
+    boolean isValidUiName(String aName);
+
+    /**
+     * @param aEMail
+     *            an e-mail address.
+     * @return if the name meets the user name policy.
+     */
+    boolean isValidEmail(String aEMail);
+
+    List<ValidationError> validatePassword(String aPassword);
+
+    List<ValidationError> validateUsername(String aName);
+
+    List<ValidationError> validateEmail(String aEMail);
+
+    List<ValidationError> validateUiName(String aName);
+
+    boolean userHasNoPassword(User aUser);
+
+    /**
+     * Users that are bound to a project (i.e. the realm is set) or which are external users (i.e.
+     * they have an empty password) cannot change their password.
+     * 
+     * @param aUser
+     *            a user
+     * @return if the user can change their password.
+     */
+    boolean canChangePassword(User aUser);
+
+    boolean isProfileSelfServiceAllowed(User aUser);
 }

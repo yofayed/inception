@@ -24,19 +24,27 @@ package de.tudarmstadt.ukp.inception.search.index.mtas;
 import static de.tudarmstadt.ukp.clarin.webanno.api.ProjectService.PROJECT_FOLDER;
 import static de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocumentState.FINISHED;
 import static de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocumentState.IGNORE;
+import static de.tudarmstadt.ukp.inception.search.Metrics.VIRTUAL_FEATURE_SENTENCE;
+import static de.tudarmstadt.ukp.inception.search.Metrics.VIRTUAL_FEATURE_TOKEN;
+import static de.tudarmstadt.ukp.inception.search.Metrics.VIRTUAL_LAYER_SEGMENTATION;
 import static de.tudarmstadt.ukp.inception.search.index.mtas.MtasUimaParser.PARAM_PROJECT_ID;
 import static de.tudarmstadt.ukp.inception.search.index.mtas.MtasUimaParser.getIndexedName;
 import static de.tudarmstadt.ukp.inception.search.index.mtas.MtasUtils.decodeFSAddress;
+import static java.util.Comparator.comparingLong;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.stream.Collectors.toList;
 import static mtas.analysis.util.MtasTokenizerFactory.ARGUMENT_PARSER;
 import static mtas.analysis.util.MtasTokenizerFactory.ARGUMENT_PARSER_ARGS;
 import static mtas.codec.MtasCodec.MTAS_CODEC_NAME;
 import static org.apache.commons.io.FileUtils.deleteDirectory;
+import static org.apache.commons.lang3.StringUtils.toRootLowerCase;
+import static org.apache.lucene.search.ScoreMode.COMPLETE_NO_SCORES;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
+import java.lang.reflect.InvocationTargetException;
 import java.text.BreakIterator;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -48,13 +56,16 @@ import java.util.ListIterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.custom.CustomAnalyzer;
 import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
@@ -65,6 +76,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.LeafReaderContext;
@@ -87,29 +99,41 @@ import org.slf4j.LoggerFactory;
 
 import com.github.openjson.JSONObject;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
 import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupportRegistry;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationDocument;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupportRegistry;
 import de.tudarmstadt.ukp.inception.search.ExecutionException;
 import de.tudarmstadt.ukp.inception.search.FeatureIndexingSupport;
 import de.tudarmstadt.ukp.inception.search.FeatureIndexingSupportRegistry;
+import de.tudarmstadt.ukp.inception.search.LayerStatistics;
 import de.tudarmstadt.ukp.inception.search.PrimitiveUimaIndexingSupport;
 import de.tudarmstadt.ukp.inception.search.SearchQueryRequest;
 import de.tudarmstadt.ukp.inception.search.SearchResult;
+import de.tudarmstadt.ukp.inception.search.StatisticRequest;
+import de.tudarmstadt.ukp.inception.search.StatisticsResult;
+import de.tudarmstadt.ukp.inception.search.index.IndexRebuildRequiredException;
 import de.tudarmstadt.ukp.inception.search.index.PhysicalIndex;
+import de.tudarmstadt.ukp.inception.search.model.AnnotationSearchState;
+import de.tudarmstadt.ukp.inception.search.model.BulkIndexingContext;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.longs.LongComparators;
+import it.unimi.dsi.fastutil.longs.LongList;
 import mtas.analysis.token.MtasTokenString;
 import mtas.analysis.util.MtasTokenizerFactory;
+import mtas.codec.util.CodecComponent;
 import mtas.codec.util.CodecInfo;
 import mtas.codec.util.CodecUtil;
+import mtas.codec.util.Status;
+import mtas.codec.util.collector.MtasDataItem;
 import mtas.parser.cql.MtasCQLParser;
+import mtas.parser.cql.ParseException;
 import mtas.search.spans.util.MtasSpanQuery;
 
 /**
@@ -162,7 +186,6 @@ public class MtasDocumentIndex
     private final FeatureIndexingSupportRegistry featureIndexingSupportRegistry;
     private final FeatureSupportRegistry featureSupportRegistry;
     private final DocumentService documentService;
-    private final AnnotationSchemaService schemaService;
     private final Project project;
     private final File repositoryDir;
     private final ScheduledExecutorService schedulerService;
@@ -171,12 +194,10 @@ public class MtasDocumentIndex
     private ReferenceManager<IndexSearcher> _searcherManager;
     private ScheduledFuture<?> _commitFuture;
 
-    public MtasDocumentIndex(Project aProject, DocumentService aDocumentService,
-            AnnotationSchemaService aSchemaService, String aDir,
+    public MtasDocumentIndex(Project aProject, DocumentService aDocumentService, String aDir,
             FeatureIndexingSupportRegistry aFeatureIndexingSupportRegistry,
             FeatureSupportRegistry aFeatureSupportRegistry)
     {
-        schemaService = aSchemaService;
         documentService = aDocumentService;
         project = aProject;
         featureIndexingSupportRegistry = aFeatureIndexingSupportRegistry;
@@ -192,63 +213,75 @@ public class MtasDocumentIndex
             return _indexWriter;
         }
 
-        // log.debug("Opening index for project [{}]({})", project.getName(), project.getId(),
-        // new RuntimeException());
-
         try {
-            // Add the project id to the configuration
-            JSONObject jsonParserConfiguration = new JSONObject();
-            jsonParserConfiguration.put(PARAM_PROJECT_ID, project.getId());
-
-            // Tokenizer parameters
-            Map<String, String> tokenizerArguments = new HashMap<>();
-            tokenizerArguments.put(ARGUMENT_PARSER, MtasUimaParser.class.getName());
-            tokenizerArguments.put(ARGUMENT_PARSER_ARGS, jsonParserConfiguration.toString());
-
-            // Build analyzer
-            Analyzer mtasAnalyzer = CustomAnalyzer.builder()
-                    .withTokenizer(MtasTokenizerFactory.class, tokenizerArguments).build();
-
-            Map<String, Analyzer> analyzerPerField = new HashMap<String, Analyzer>();
-            analyzerPerField.put(FIELD_CONTENT, mtasAnalyzer);
-
-            PerFieldAnalyzerWrapper analyzer = new PerFieldAnalyzerWrapper(new StandardAnalyzer(),
-                    analyzerPerField);
-
-            // Build IndexWriter
-            FileUtils.forceMkdir(getIndexDir());
-            IndexWriterConfig config = new IndexWriterConfig(analyzer);
-            config.setCodec(Codec.forName(MTAS_CODEC_NAME));
-
-            @SuppressWarnings("resource")
-            IndexWriter indexWriter = new IndexWriter(FSDirectory.open(getIndexDir().toPath()),
-                    config);
-
-            // Initialize the index
-            try {
-                indexWriter.commit();
-            }
-            catch (IOException e) {
-                try {
-                    indexWriter.close();
-                }
-                catch (IOException e1) {
-                    log.error("Error while trying to close index which could not be initalized"
-                            + " - actual exception follows", e);
-                }
-                throw e;
-            }
-
             // After the index has been initialized, assign the _indexWriter - this is also used
             // by isOpen() to check if the index writer is available.
-            _indexWriter = indexWriter;
-
+            _indexWriter = createIndexWriter();
             return _indexWriter;
         }
         catch (IOException e) {
+            if (log.isDebugEnabled()) {
+                log.warn("Unable to read MTAS index: {}. Deleting index so it can be rebuilt.",
+                        e.getMessage(), e);
+            }
+            else {
+                log.warn("Unable to read MTAS index: {}. Deleting index so it can be rebuilt.",
+                        e.getMessage());
+            }
+
+            // If the index is corrupt, delete it so it can be rebuilt from scratch
+            delete();
+
             _indexWriter = null;
+            throw new IndexRebuildRequiredException(e);
+        }
+    }
+
+    private IndexWriter createIndexWriter() throws IOException
+    {
+        // Add the project id to the configuration
+        JSONObject jsonParserConfiguration = new JSONObject();
+        jsonParserConfiguration.put(PARAM_PROJECT_ID, project.getId());
+
+        // Tokenizer parameters
+        Map<String, String> tokenizerArguments = new HashMap<>();
+        tokenizerArguments.put(ARGUMENT_PARSER, MtasUimaParser.class.getName());
+        tokenizerArguments.put(ARGUMENT_PARSER_ARGS, jsonParserConfiguration.toString());
+
+        // Build analyzer
+        Analyzer mtasAnalyzer = CustomAnalyzer.builder()
+                .withTokenizer(MtasTokenizerFactory.class, tokenizerArguments).build();
+
+        Map<String, Analyzer> analyzerPerField = new HashMap<String, Analyzer>();
+        analyzerPerField.put(FIELD_CONTENT, mtasAnalyzer);
+
+        PerFieldAnalyzerWrapper analyzer = new PerFieldAnalyzerWrapper(new StandardAnalyzer(),
+                analyzerPerField);
+
+        // Build IndexWriter
+        FileUtils.forceMkdir(getIndexDir());
+        IndexWriterConfig config = new IndexWriterConfig(analyzer);
+        config.setCodec(Codec.forName(MTAS_CODEC_NAME));
+
+        @SuppressWarnings("resource")
+        IndexWriter indexWriter = new IndexWriter(FSDirectory.open(getIndexDir().toPath()), config);
+
+        // Initialize the index
+        try {
+            indexWriter.commit();
+        }
+        catch (IOException e) {
+            try {
+                indexWriter.close();
+            }
+            catch (IOException e1) {
+                log.error("Error while trying to close index which could not be initialized"
+                        + " - actual exception follows", e);
+            }
             throw e;
         }
+
+        return indexWriter;
     }
 
     private void ensureAllIsCommitted()
@@ -301,8 +334,7 @@ public class MtasDocumentIndex
                 _indexWriter.close();
             }
             catch (IOException e) {
-                log.error("Error closing index for project [{}]({})", project.getName(),
-                        project.getId(), e);
+                log.error("Error closing index for project {}", project, e);
             }
 
             if (_searcherManager != null) {
@@ -310,15 +342,14 @@ public class MtasDocumentIndex
                     _searcherManager.close();
                 }
                 catch (IOException e) {
-                    log.error("Error closing index for project [{}]({})", project.getName(),
-                            project.getId(), e);
+                    log.error("Error closing index for project {}", project, e);
                 }
             }
         }
         finally {
             _indexWriter = null;
             _searcherManager = null;
-            log.debug("Closed index for project [{}]({})", project.getName(), project.getId());
+            log.debug("Closed index for project {}", project);
         }
     }
 
@@ -343,8 +374,7 @@ public class MtasDocumentIndex
             return;
         }
 
-        log.debug("Enqueuing new future to index for project [{}]({})", project.getName(),
-                project.getId());
+        log.debug("Enqueuing new future to index for project {}", project);
 
         _commitFuture = schedulerService.schedule(this::commit, 3, SECONDS);
     }
@@ -352,12 +382,10 @@ public class MtasDocumentIndex
     private void commit()
     {
         try {
-            log.debug("Executing future to index for project [{}]({})", project.getName(),
-                    project.getId());
+            log.debug("Executing future to index for project {}", project);
             if (_indexWriter != null && _indexWriter.isOpen()) {
                 _indexWriter.commit();
-                log.debug("Committed changes to index for project [{}]({})", project.getName(),
-                        project.getId());
+                log.debug("Committed changes to index for project {}", project);
 
                 if (_searcherManager != null) {
                     _searcherManager.maybeRefresh();
@@ -365,8 +393,7 @@ public class MtasDocumentIndex
             }
         }
         catch (IOException e) {
-            log.error("Unable to commit to index of project [{}]({})", project.getName(),
-                    project.getId());
+            log.error("Unable to commit to index of project {}", project);
         }
     }
 
@@ -379,6 +406,12 @@ public class MtasDocumentIndex
     public boolean isOpen()
     {
         return _indexWriter != null ? _indexWriter.isOpen() : false;
+    }
+
+    @Override
+    public void open() throws IOException
+    {
+        getIndexWriter();
     }
 
     @Override
@@ -395,6 +428,255 @@ public class MtasDocumentIndex
         return _executeQuery(this::doCountResults, aRequest);
     }
 
+    @Override
+    public StatisticsResult getAnnotationStatistics(StatisticRequest aStatisticRequest)
+        throws IOException, ExecutionException
+    {
+        List<Integer> fullDocSet = getUniqueDocuments(aStatisticRequest);
+        Map<String, LayerStatistics> allStats = new HashMap<String, LayerStatistics>();
+        Map<String, LayerStatistics> nonNullStats = new HashMap<String, LayerStatistics>();
+        Set<AnnotationFeature> features = aStatisticRequest.getFeatures();
+
+        for (AnnotationFeature feature : features) {
+            AnnotationLayer layer = feature.getLayer();
+            String searchString = "<" + MtasUimaParser.getIndexedName(layer.getUiName()) + "."
+                    + MtasUimaParser.getIndexedName(feature.getUiName()) + "=\"\"/>";
+
+            LayerStatistics results = getLayerStatistics(aStatisticRequest, searchString,
+                    fullDocSet);
+            results.setFeature(feature);
+            if (results.getMaximum() > 0) {
+                nonNullStats.put(layer.getUiName() + "." + feature.getUiName(), results);
+            }
+            allStats.put(layer.getUiName() + "." + feature.getUiName(), results);
+        }
+        AnnotationLayer rawText = new AnnotationLayer();
+        rawText.setUiName(VIRTUAL_LAYER_SEGMENTATION);
+
+        AnnotationFeature token = new AnnotationFeature();
+        token.setUiName(VIRTUAL_FEATURE_TOKEN);
+        token.setLayer(rawText);
+
+        AnnotationFeature sentence = new AnnotationFeature();
+        sentence.setUiName(VIRTUAL_FEATURE_SENTENCE);
+        sentence.setLayer(rawText);
+
+        LayerStatistics results = getLayerStatistics(aStatisticRequest, "<Token=\"\"/>",
+                fullDocSet);
+
+        results.setFeature(token);
+        allStats.put(VIRTUAL_LAYER_SEGMENTATION + "." + VIRTUAL_FEATURE_TOKEN, results);
+        nonNullStats.put(VIRTUAL_LAYER_SEGMENTATION + "." + VIRTUAL_FEATURE_TOKEN, results);
+
+        results = getLayerStatistics(aStatisticRequest, "<s=\"\"/>", fullDocSet);
+        results.setFeature(sentence);
+        allStats.put(VIRTUAL_LAYER_SEGMENTATION + "." + VIRTUAL_FEATURE_SENTENCE, results);
+        nonNullStats.put(VIRTUAL_LAYER_SEGMENTATION + "." + VIRTUAL_FEATURE_SENTENCE, results);
+
+        return new StatisticsResult(aStatisticRequest, allStats, nonNullStats,
+                aStatisticRequest.getFeatures());
+    }
+
+    @Override
+    public List<Integer> getUniqueDocuments(StatisticRequest aStatisticRequest) throws IOException
+    {
+        IndexSearcher searcher = null;
+        Map<Long, Long> annotatableDocuments = listAnnotatableDocuments(
+                aStatisticRequest.getProject(), aStatisticRequest.getUser());
+
+        List<Integer> fullDocSet = new ArrayList<Integer>();
+
+        try {
+            searcher = getSearcherManager().acquire();
+            IndexReader reader = searcher.getIndexReader();
+
+            for (int i = 0; i < reader.maxDoc(); i++) {
+                String sourceID = reader.document(i).get(FIELD_SOURCE_DOCUMENT_ID);
+                String annotationID = reader.document(i).get(FIELD_ANNOTATION_DOCUMENT_ID);
+                // a -1 indicates source document
+                if (Long.valueOf(annotationID) != -1L) {
+                    if (reader.document(i).get(FIELD_USER)
+                            .equals(aStatisticRequest.getUser().getUsername())) {
+                        fullDocSet.add(i);
+                    }
+                }
+                // source document without annotation layer? then user is not relevant
+                else if (!annotatableDocuments.containsKey(Long.valueOf(sourceID))) {
+                    fullDocSet.add(i);
+                }
+            }
+        }
+        finally {
+            if (searcher != null) {
+                // Releasing and setting to null per recommendation in JavaDoc of
+                // release(searcher) method
+                getSearcherManager().release(searcher);
+                searcher = null;
+            }
+        }
+        return fullDocSet;
+    }
+
+    private MtasSpanQuery parseQuery(String aQuery, AnnotationSearchState aPrefs)
+        throws ExecutionException, IOException
+    {
+        final MtasSpanQuery mtasSpanQuery;
+        try {
+            String modifiedQuery = preprocessQuery(aQuery, aPrefs);
+            try (Reader queryReader = new StringReader(modifiedQuery)) {
+                MtasCQLParser parser = new MtasCQLParser(queryReader);
+                mtasSpanQuery = parser.parse(FIELD_CONTENT, DEFAULT_PREFIX, null, null, null);
+            }
+        }
+        catch (ParseException | Error e) {
+            // The exceptions thrown by the MTAS CQL Parser are inheriting from
+            // java.lang.Error...
+            throw new ExecutionException("Unable to parse query [" + aQuery + "]", e);
+        }
+        return mtasSpanQuery;
+    }
+
+    @Override
+    public LayerStatistics getLayerStatistics(StatisticRequest aStatisticRequest,
+            String aFeatureQuery, List<Integer> aFullDocSet)
+        throws IOException, ExecutionException
+    {
+        IndexSearcher searcher = null;
+        Map<String, Object> resultsMap = null;
+        Map<String, Object> resultsMapSentence = null;
+
+        // Map<Long, Long> annotatableDocuments = listAnnotatableDocuments(
+        // aStatisticRequest.getProject(), aStatisticRequest.getUser());
+        Double minToken = aStatisticRequest.getMinTokenPerDoc() != Integer.MIN_VALUE
+                ? (double) aStatisticRequest.getMinTokenPerDoc()
+                : null;
+        Double maxToken = aStatisticRequest.getMaxTokenPerDoc() != Integer.MAX_VALUE
+                ? (double) aStatisticRequest.getMaxTokenPerDoc()
+                : null;
+        try {
+            searcher = getSearcherManager().acquire();
+            IndexReader reader = searcher.getIndexReader();
+
+            // what does this parameter do?
+            List<Integer> fullDocList = new ArrayList<Integer>();
+
+            // there is no real documentation for using mtas directly in Java. This can help:
+            // https://textexploration.github.io/mtas/installation_lucene.html
+            // This describes the functionality better but only for solr:
+            // https://textexploration.github.io/mtas/search_component_stats_spans.html
+
+            // The ComponentField is a big container which can contain many stuff. The only relevant
+            // things for us are statsSpanList and spanQueryList
+            // Source Code:
+            // https://github.com/textexploration/mtas/blob/96c7911e9c591c2bd4a419dbf0e2194813376776/src/main/java/mtas/codec/util/CodecComponent.java
+            CodecComponent.ComponentField fieldStats = new CodecComponent.ComponentField(
+                    FIELD_CONTENT);
+            // The query is either an actual query (if the method is called from
+            // getQueryStatistics in SearchService) or a mock query, e.g. "<Token=\"\"/>"
+            // (if the method shall return statistics for a layer). The second query always
+            // counts the sentences for per sentence statistics.
+            MtasSpanQuery[] spanQuerys = new MtasSpanQuery[2];
+
+            // we need two functions. Each function consists of 3 parts
+            // 1. The key. This is just a unique identifier
+            String[] functionKeys = new String[2];
+            // 2. The actual instructions of the function
+            String[] functions = new String[2];
+            // 3. Which values the function shall output
+            String[] functionTypes = new String[2];
+
+            // Add the preprocessed query to the spanQueryList
+            MtasSpanQuery parsedQuery = parseQuery(aFeatureQuery,
+                    aStatisticRequest.getSearchSettings());
+            fieldStats.spanQueryList.add(parsedQuery);
+
+            // maybe using a function for this simple case is too slow...
+            spanQuerys[0] = parsedQuery;
+            functionKeys[0] = "currentLayer";
+            // This is a mock function (mathematically, the identity function).
+            // q0 indicates the result of the first parsed query
+            functions[0] = "$q0";
+            // The output should be all the requested statistics
+            functionTypes[0] = LayerStatistics.STATS;
+
+            // A query which counts sentences
+            MtasSpanQuery parsedSentQuery = parseQuery("<s=\"\"/>",
+                    aStatisticRequest.getSearchSettings());
+            fieldStats.spanQueryList.add(parsedSentQuery);
+
+            spanQuerys[1] = parsedSentQuery;
+            functionKeys[1] = "perSentence";
+            // q0 is the result of the actual query. q1 is the result of counting the sentences
+            // We divide them using /
+            functions[1] = "$q0/$q1";
+            // The output should be all the requested statistics
+            functionTypes[1] = LayerStatistics.STATS;
+
+            // Now we are finished with the spanQueryList
+
+            // Next we look at the statsSpanList
+            // We add a ComponentSpan to the statsSpanList which is created using all the things
+            // we defined above
+            // The key is a unique but somewhat arbitrary identifier
+            // minToken and maxToken indicate that only documents with a number of tokens bigger
+            // than minToken and smaller than maxToken should be considered
+            fieldStats.statsSpanList
+                    .add(new CodecComponent.ComponentSpan(spanQuerys, "ax2", minToken, maxToken,
+                            LayerStatistics.STATS, functionKeys, functions, functionTypes));
+
+            // Now we are done with the preparations
+            // Next we actually collect the data and do all the calculations
+            // Only documents in aFullDocSet are considered
+            // I do not know for what Status and fullDocList are needed...
+            CodecUtil.collectField(FIELD_CONTENT, searcher, reader,
+                    (ArrayList<Integer>) fullDocList, (ArrayList<Integer>) aFullDocSet, fieldStats,
+                    new Status());
+            // All that is left now is extracting the statistics from fieldStats
+            // statsSpanList only has one entry and the first function is the perDocument statistics
+            MtasDataItem<?, ?> results = fieldStats.statsSpanList.get(0).functions
+                    .get(0).dataCollector.getResult().getData();
+
+            resultsMap = results.rewrite(true);
+
+            // The second function is the perSentence statistics
+            MtasDataItem<?, ?> resultsPerSentence = fieldStats.statsSpanList.get(0).functions
+                    .get(1).dataCollector.getResult().getData();
+
+            resultsMapSentence = resultsPerSentence.rewrite(true);
+
+            Long noOfDocsLong = (Long) resultsMapSentence.get("n");
+            LayerStatistics layerStats = new LayerStatistics((double) resultsMap.get("sum"),
+                    (double) resultsMap.get("max"), (double) resultsMap.get("min"),
+                    (double) resultsMap.get("mean"), (double) resultsMap.get("median"),
+                    (double) resultsMap.get("standarddeviation"),
+                    (double) resultsMapSentence.get("sum"), (double) resultsMapSentence.get("max"),
+                    (double) resultsMapSentence.get("min"), (double) resultsMapSentence.get("mean"),
+                    (double) resultsMapSentence.get("median"),
+                    (double) resultsMapSentence.get("standarddeviation"),
+                    noOfDocsLong.doubleValue());
+
+            return layerStats;
+        }
+        catch (mtas.parser.function.ParseException e) {
+            throw new ExecutionException("Search function could not be parsed!", e);
+        }
+        catch (IllegalAccessException e) {
+            throw new ExecutionException("Collector could not access data!", e);
+        }
+        catch (InvocationTargetException e) {
+            throw new ExecutionException("Problem with collecting the data!", e.getCause());
+        }
+        finally {
+            if (searcher != null) {
+                // Releasing and setting to null per recommendation in JavaDoc of
+                // release(searcher)
+                // method
+                getSearcherManager().release(searcher);
+                searcher = null;
+            }
+        }
+    }
+
     private <T> T _executeQuery(QueryRunner<T> aRunner, SearchQueryRequest aRequest)
         throws IOException, ExecutionException
     {
@@ -404,19 +686,19 @@ public class MtasDocumentIndex
 
         final MtasSpanQuery mtasSpanQuery;
         try {
-            String modifiedQuery = preprocessQuery(aRequest.getQuery());
-            MtasSpanQuery mtasSpanQuery1;
+            String modifiedQuery = preprocessQuery(aRequest.getQuery(),
+                    aRequest.getSearchSettings());
             try (Reader reader = new StringReader(modifiedQuery)) {
                 MtasCQLParser parser = new MtasCQLParser(reader);
-                mtasSpanQuery1 = parser.parse(FIELD_CONTENT, DEFAULT_PREFIX, null, null, null);
+                mtasSpanQuery = parser.parse(FIELD_CONTENT, DEFAULT_PREFIX, null, null, null);
             }
-            mtasSpanQuery = mtasSpanQuery1;
         }
-        catch (IOException e) {
-            throw e;
+        catch (ParseException | Error e) {
+            // The exceptions thrown by the MTAS CQL Parser are inheriting from java.lang.Error...
+            throw new ExecutionException("Unable to parse query [" + aRequest.getQuery() + "]", e);
         }
         catch (Exception e) {
-            throw new ExecutionException("Unable to parse query [" + aRequest.getQuery() + "]", e);
+            throw e;
         }
 
         IndexSearcher searcher = null;
@@ -438,36 +720,44 @@ public class MtasDocumentIndex
         }
     }
 
-    private String preprocessQuery(String aQuery)
+    private String preprocessQuery(String aQuery, AnnotationSearchState aPrefs)
     {
-        String result;
-
-        if (!(aQuery.contains("\"") || aQuery.contains("[") || aQuery.contains("]")
-                || aQuery.contains("{") || aQuery.contains("}") || aQuery.contains("<")
-                || aQuery.contains(">"))) {
-            // Convert raw words query to a Mtas CQP query
-
-            result = "";
-            BreakIterator words = BreakIterator.getWordInstance();
-            words.setText(aQuery);
-
-            int start = words.first();
-            int end = words.next();
-            while (end != BreakIterator.DONE) {
-                String word = aQuery.substring(start, end);
-                if (!word.trim().isEmpty()) {
-                    // Add the word to the query
-                    result += "\"" + word + "\"";
-                }
-                start = end;
-                end = words.next();
-                if (end != BreakIterator.DONE) {
-                    result += " ";
-                }
-            }
+        if (aQuery.contains("\"") || aQuery.contains("[") || aQuery.contains("]")
+                || aQuery.contains("<") || aQuery.contains(">")) {
+            return aQuery;
         }
-        else {
-            result = aQuery;
+
+        // Convert raw words query to a Mtas CQP query
+        String result = "";
+        BreakIterator words = BreakIterator.getWordInstance();
+        words.setText(aQuery);
+
+        int start = words.first();
+        int end = words.next();
+        while (end != BreakIterator.DONE) {
+            String word = aQuery.substring(start, end);
+
+            if (!aPrefs.isCaseSensitive()) {
+                word = toRootLowerCase(word);
+            }
+
+            if (!word.trim().isEmpty()) {
+                word = word.replace("&", "\\&");
+                word = word.replace("(", "\\(");
+                word = word.replace(")", "\\)");
+                word = word.replace("#", "\\#");
+                word = word.replace("{", "\\{");
+                word = word.replace("}", "\\}");
+                word = word.replace("<", "\\<");
+                word = word.replace(">", "\\>");
+                // Add the word to the query
+                result += "\"" + word + "\"";
+            }
+            start = end;
+            end = words.next();
+            if (end != BreakIterator.DONE) {
+                result += " ";
+            }
         }
 
         return result;
@@ -484,8 +774,8 @@ public class MtasDocumentIndex
                 aRequest.getUser());
 
         final float boost = 0;
-        SpanWeight spanweight = q.rewrite(searcher.getIndexReader()).createWeight(searcher, false,
-                boost);
+        SpanWeight spanweight = q.rewrite(searcher.getIndexReader()).createWeight(searcher,
+                COMPLETE_NO_SCORES, boost);
 
         long numResults = 0;
 
@@ -545,7 +835,7 @@ public class MtasDocumentIndex
                                     && !aRequest.getUser().getUsername().equals(user)) {
                                 // Exclude result if the retrieved document is an annotation
                                 // document (that is, annotationDocument != -1 and its username
-                                // is different from the quering user
+                                // is different from the querying user
                                 log.trace(
                                         "Skipping results from annotation document for user {} "
                                                 + "which does not match the requested user {}",
@@ -578,14 +868,66 @@ public class MtasDocumentIndex
         return annotateableDocuments;
     }
 
+    private List<LeafReaderContext> sortLeaves(List<LeafReaderContext> aLeaves,
+            IndexSearcher aSearcher, MtasSpanQuery aQuery)
+        throws IOException
+    { // This method sorts the LeafReaderContexts according to the document ids
+      // they contain. If one does not contain a document for this search, then
+      // it is discarded. If one contains multiple document ids the smallest
+      // is used for comparison.
+
+        List<Pair<LeafReaderContext, List<Long>>> mapToDocIds = new ArrayList<>();
+
+        // Here, the query comes into play
+        SpanWeight spanweight = aQuery.rewrite(aSearcher.getIndexReader()).createWeight(aSearcher,
+                COMPLETE_NO_SCORES, 0);
+
+        // cycle through all the leaves
+        for (LeafReaderContext leafReaderContext : aLeaves) {
+            Spans spans = spanweight.getSpans(leafReaderContext, SpanWeight.Postings.POSITIONS);
+            SegmentReader segmentReader = (SegmentReader) leafReaderContext.reader();
+            LongList idList = new LongArrayList();
+            // no spans -> no docs
+            if (spans != null) {
+                // go through the docs in iterator span
+                while (spans.nextDoc() != Spans.NO_MORE_DOCS) {
+                    // don't know why this if is needed, just copy/pasted it from method doQuery
+                    // below
+                    if (segmentReader.numDocs() == segmentReader.maxDoc()
+                            || segmentReader.getLiveDocs().get(spans.docID())) {
+                        // get a document
+                        Document document = segmentReader.document(spans.docID());
+
+                        String rawSourceDocumentId = document.get(FIELD_SOURCE_DOCUMENT_ID);
+                        // go to the next document if the docId is not set
+                        if (rawSourceDocumentId == null) {
+                            continue;
+                        }
+                        // add id to the list of ids for this leafReaderContext
+                        idList.add(Long.parseLong(rawSourceDocumentId));
+                    }
+                }
+            }
+            idList.sort(LongComparators.NATURAL_COMPARATOR);
+            if (!idList.isEmpty()) {
+                mapToDocIds.add(Pair.of(leafReaderContext, idList));
+            }
+        }
+        // Sort according to docId; take the smallest value in the list
+        mapToDocIds.sort(comparingLong(s -> s.getValue().get(0)));
+
+        // Only return the leaves
+        return mapToDocIds.stream().map(Pair::getKey).collect(Collectors.toList());
+    }
+
     private Map<String, List<SearchResult>> doQuery(IndexSearcher searcher,
             SearchQueryRequest aRequest, MtasSpanQuery q)
         throws IOException
     {
         Map<String, List<SearchResult>> results = new LinkedHashMap<>();
 
-        ListIterator<LeafReaderContext> leafReaderContextIterator = searcher.getIndexReader()
-                .leaves().listIterator();
+        ListIterator<LeafReaderContext> leafReaderContextIterator = sortLeaves(
+                searcher.getIndexReader().leaves(), searcher, q).listIterator();
 
         Map<SourceDocument, AnnotationDocument> sourceAnnotationDocPairs = documentService
                 .listAnnotatableDocuments(aRequest.getProject(), aRequest.getUser());
@@ -594,8 +936,8 @@ public class MtasDocumentIndex
                 .forEach(e -> sourceDocumentIndex.put(e.getKey().getId(), e.getKey()));
 
         final float boost = 0;
-        SpanWeight spanweight = q.rewrite(searcher.getIndexReader()).createWeight(searcher, false,
-                boost);
+        SpanWeight spanweight = q.rewrite(searcher.getIndexReader()).createWeight(searcher,
+                COMPLETE_NO_SCORES, boost);
 
         long offset = aRequest.getOffset();
         long count = aRequest.getCount();
@@ -603,6 +945,7 @@ public class MtasDocumentIndex
 
         resultIteration: while (leafReaderContextIterator.hasNext()) {
             LeafReaderContext leafReaderContext = leafReaderContextIterator.next();
+
             try {
                 Spans spans = spanweight.getSpans(leafReaderContext, SpanWeight.Postings.POSITIONS);
                 SegmentReader segmentReader = (SegmentReader) leafReaderContext.reader();
@@ -678,7 +1021,7 @@ public class MtasDocumentIndex
                                     && !aRequest.getUser().getUsername().equals(user)) {
                                 // Exclude result if the retrieved document is an annotation
                                 // document (that is, annotationDocument != -1 and its username
-                                // is different from the quering user
+                                // is different from the querying user
                                 log.trace(
                                         "Skipping results from annotation document for user {} "
                                                 + "which does not match the requested user {}",
@@ -763,7 +1106,7 @@ public class MtasDocumentIndex
                                     else {
                                         // Only add the whitespace to the match if we already have
                                         // added any text to the match - otherwise consider the
-                                        // whitespace to be part of the left contex
+                                        // whitespace to be part of the left context
                                         if (resultText.length() > 0) {
                                             fill(resultText, prevToken, token);
                                         }
@@ -801,7 +1144,14 @@ public class MtasDocumentIndex
                 log.error("Unable to process query results", e);
             }
         }
-        return results;
+
+        var sortedResults = new LinkedHashMap<String, List<SearchResult>>();
+        var sortedKeys = results.keySet().stream().sorted().collect(toList());
+        for (var key : sortedKeys) {
+            sortedResults.put(key, results.get(key));
+        }
+
+        return sortedResults;
     }
 
     private void addToResults(Map<String, List<SearchResult>> aResultsMap, String aKey,
@@ -875,7 +1225,7 @@ public class MtasDocumentIndex
         }
     }
 
-    private void indexDocument(String aDocumentTitle, long aSourceDocumentId,
+    private String indexDocument(String aDocumentTitle, long aSourceDocumentId,
             long aAnnotationDocumentId, String aUser, byte[] aBinaryCas)
         throws IOException
     {
@@ -911,6 +1261,8 @@ public class MtasDocumentIndex
 
         // Add document to the Lucene index
         indexWriter.addDocument(doc);
+
+        return timestamp;
     };
 
     /**
@@ -965,11 +1317,48 @@ public class MtasDocumentIndex
         IndexWriter indexWriter = getIndexWriter();
 
         // Prepare boolean query with the two obligatory terms (id and timestamp)
-        BooleanQuery.Builder booleanQuery = new BooleanQuery.Builder().add(
-                new TermQuery(new Term(FIELD_ID,
+        BooleanQuery.Builder booleanQuery = new BooleanQuery.Builder() //
+                .add(new TermQuery(new Term(FIELD_ID,
                         String.format("%d/%d", aSourceDocumentId, aAnnotationDocumentId))),
-                BooleanClause.Occur.MUST).add(new TermQuery(new Term(FIELD_TIMESTAMP, aTimestamp)),
+                        BooleanClause.Occur.MUST) //
+                .add(new TermQuery(new Term(FIELD_TIMESTAMP, aTimestamp)),
                         BooleanClause.Occur.MUST);
+
+        // Delete document based on the previous query
+        indexWriter.deleteDocuments(booleanQuery.build());
+    }
+
+    /**
+     * Remove a specific document from the index based on its timestamp
+     * 
+     * @param aSourceDocumentId
+     *            The ID of the source document to be removed
+     * @param aAnnotationDocumentId
+     *            The ID of the annotation document to be removed
+     * @param aUser
+     *            The owner of the document to be removed
+     * @param aCurrentVersion
+     *            The timestamp of the document to be kept
+     */
+    private void deindexOldVersionsOfDocument(long aSourceDocumentId, long aAnnotationDocumentId,
+            String aUser, String aCurrentVersion)
+        throws IOException
+    {
+        log.debug(
+                "Removing old versions of document from index in project [{}]({}). sourceId: {}, "
+                        + "annotationId: {}, user: {}, current timestamp: {}",
+                project.getName(), project.getId(), aSourceDocumentId, aAnnotationDocumentId, aUser,
+                aCurrentVersion);
+
+        IndexWriter indexWriter = getIndexWriter();
+
+        // Prepare boolean query with the two obligatory terms (id and timestamp)
+        BooleanQuery.Builder booleanQuery = new BooleanQuery.Builder() //
+                .add(new TermQuery(new Term(FIELD_ID,
+                        String.format("%d/%d", aSourceDocumentId, aAnnotationDocumentId))),
+                        BooleanClause.Occur.MUST) //
+                .add(new TermQuery(new Term(FIELD_TIMESTAMP, aCurrentVersion)),
+                        BooleanClause.Occur.MUST_NOT);
 
         // Delete document based on the previous query
         indexWriter.deleteDocuments(booleanQuery.build());
@@ -1016,6 +1405,7 @@ public class MtasDocumentIndex
      * @param aDocument
      *            The document to be removed
      */
+    @Deprecated
     @Override
     public void deindexDocument(AnnotationDocument aDocument, String aTimestamp) throws IOException
     {
@@ -1057,18 +1447,17 @@ public class MtasDocumentIndex
     @Override
     public Optional<String> getTimestamp(long aSrcDocId, long aAnnoDocId) throws IOException
     {
-        Optional<String> result = Optional.empty();
-
         if (aSrcDocId == -1 || aAnnoDocId == -1) {
-            return result;
+            return Optional.empty();
         }
+
+        Optional<String> result = Optional.empty();
 
         // Prepare index searcher for accessing index
         ReferenceManager<IndexSearcher> searchManager = getSearcherManager();
         searchManager.maybeRefresh();
         IndexSearcher indexSearcher = searchManager.acquire();
         try {
-
             // Prepare query for the annotation document for this annotation document
             Term term = new Term(FIELD_ID, String.format("%d/%d", aSrcDocId, aAnnoDocId));
 
@@ -1130,11 +1519,23 @@ public class MtasDocumentIndex
         // a version of the annotation document index, we obtain the timestamp of this
         // version, then we add the new version, and finally we remove the old version
         // as identified by the timestamp.
-        Optional<String> oldTimestamp = getTimestamp(srcDocId, annoDocId);
-        indexDocument(aDocument.getName(), srcDocId, annoDocId, user, aBinaryCas);
-        if (oldTimestamp.isPresent()) {
-            deindexDocument(srcDocId, annoDocId, user, oldTimestamp.get());
-        }
+        // Optional<String> oldTimestamp = Optional.empty();
+        // if (!BulkIndexingContext.isFullReindexInProgress()) {
+        // // Looking up the timestamp is slow (because it requires refreshing the searcher to
+        // // get the latest info) and when we do a full index rebuild, it is just slowing things
+        // // down unnecessarily.
+        // oldTimestamp = getTimestamp(srcDocId, annoDocId);
+        // }
+
+        var currentTimestamp = indexDocument(aDocument.getName(), srcDocId, annoDocId, user,
+                aBinaryCas);
+
+        deindexOldVersionsOfDocument(srcDocId, annoDocId, user, currentTimestamp);
+
+        // if (oldTimestamp.isPresent()) {
+        // deindexDocument(srcDocId, annoDocId, user, oldTimestamp.get());
+        // }
+
         scheduleCommit();
     }
 
@@ -1144,7 +1545,10 @@ public class MtasDocumentIndex
         // NOTE: deleting all index versions related to the sourcedoc is ok in comparison to
         // re-indexing annotation documents, because we do this before the search
         // is accessed and therefore do not care about indices not being available for a short time
-        deindexDocument(aSourceDocument.getId(), -1, "");
+        if (!BulkIndexingContext.isFullReindexInProgress()) {
+            deindexDocument(aSourceDocument.getId(), -1, "");
+        }
+
         indexDocument(aSourceDocument.getName(), aSourceDocument.getId(), -1, "", aBinaryCas);
         scheduleCommit();
     }

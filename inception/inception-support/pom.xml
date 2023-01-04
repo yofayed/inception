@@ -20,7 +20,7 @@
   <parent>
     <groupId>de.tudarmstadt.ukp.inception.app</groupId>
     <artifactId>inception-app</artifactId>
-    <version>0.20.0-SNAPSHOT</version>
+    <version>27.0-SNAPSHOT</version>
   </parent>
   <artifactId>inception-support</artifactId>
   <name>INCEpTION - Support library</name>
@@ -43,8 +43,17 @@
       <artifactId>commons-lang3</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-collections4</artifactId>
+    </dependency>
+
+    <dependency>
       <groupId>com.github.rjeschke</groupId>
       <artifactId>txtmark</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.googlecode.owasp-java-html-sanitizer</groupId>
+      <artifactId>owasp-java-html-sanitizer</artifactId>
     </dependency>
 
     <!-- Spring dependencies -->
@@ -59,6 +68,10 @@
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-beans</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -93,10 +106,6 @@
       <artifactId>wicket-spring</artifactId>
     </dependency>
     <dependency>
-      <groupId>de.agilecoders.wicket.webjars</groupId>
-      <artifactId>wicket-webjars</artifactId>
-    </dependency>
-    <dependency>
       <groupId>com.googlecode.wicket-jquery-ui</groupId>
       <artifactId>wicket-jquery-ui</artifactId>
     </dependency>
@@ -110,29 +119,26 @@
     </dependency>
     <dependency>
       <groupId>org.wicketstuff</groupId>
-      <artifactId>wicketstuff-urlfragment</artifactId>
+      <artifactId>wicketstuff-input-events</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.github.openjson</groupId>
-      <artifactId>openjson</artifactId>
+      <groupId>de.agilecoders.wicket</groupId>
+      <artifactId>wicket-bootstrap-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.agilecoders.wicket</groupId>
+      <artifactId>wicket-bootstrap-extensions</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>de.agilecoders.wicket</groupId>
+      <artifactId>jquery-selectors</artifactId>
     </dependency>
     <dependency>
       <groupId>org.danekja</groupId>
       <artifactId>jdk-serializable-functional</artifactId>
     </dependency>
-    
-    <dependency>
-      <groupId>org.webjars.npm</groupId>
-      <artifactId>vue</artifactId>
-      <version>3.0.5</version>
-    </dependency>
-    <dependency>
-      <groupId>org.webjars.npm</groupId>
-      <artifactId>dayjs</artifactId>
-      <version>1.9.6</version>
-    </dependency>
 
-    <!-- Hibernate dependencies -->
+    <!-- Database dependencies -->
     <dependency>
       <groupId>org.hibernate</groupId>
       <artifactId>hibernate-core</artifactId>
@@ -140,6 +146,10 @@
     <dependency>
       <groupId>javax.persistence</groupId>
       <artifactId>javax.persistence-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.liquibase</groupId>
+      <artifactId>liquibase-core</artifactId>
     </dependency>
 
     <!-- Jackson dependencies -->
@@ -149,51 +159,50 @@
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-annotations</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>
-
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.dataformat</groupId>
+      <artifactId>jackson-dataformat-yaml</artifactId>
+    </dependency>
+    
     <dependency>
       <groupId>javax.servlet</groupId>
       <artifactId>javax.servlet-api</artifactId>
       <scope>provided</scope>
     </dependency>
 
-    <!-- LOGGING DEPENDENCIES - SLF4J -->
+    <!-- LOGGING DEPENDENCIES - SLF4J / LOG4J -->
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
     </dependency>
-
-    <!-- Testing -->
     <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <scope>test</scope>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.assertj</groupId>
-      <artifactId>assertj-core</artifactId>
-      <scope>test</scope>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>com.github.ben-manes.caffeine</groupId>
+      <artifactId>caffeine</artifactId>
     </dependency>
   </dependencies>
-  
+
   <build>
     <pluginManagement>
       <plugins>
-        <plugin>
-          <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-dependency-plugin</artifactId>
-          <configuration>
-            <usedDependencies>
-              <!--
-                - Maven doesn't detect the the webjar dependencies because there is
-                - no actual code dependency
-              -->
-              <usedDependency>org.webjars.npm:vue</usedDependency>
-              <usedDependency>org.webjars.npm:dayjs</usedDependency>
-            </usedDependencies>
-          </configuration>
-        </plugin>
         <plugin>
           <groupId>org.apache.rat</groupId>
           <artifactId>apache-rat-plugin</artifactId>
@@ -202,9 +211,8 @@
               <id>default</id>
               <configuration>
                 <excludes combine.children="append">
-                  <!-- These upstream files do not contain license headers -->
-                  <exclude>src/main/java/de/tudarmstadt/ukp/inception/support/vue/vue3-sfc-loader.min.js</exclude>
-                  <exclude>src/main/java/de/tudarmstadt/ukp/inception/support/vue/vue3-sfc-loader.min.js.map</exclude>
+                  <!-- Trivial template file which a license header would bloat too much-->
+                  <exclude>src/main/java/de/tudarmstadt/ukp/clarin/webanno/support/wicket/input/remove-input-behavior.js</exclude>
                   <!-- Apache License without header -->
                   <exclude>src/main/java/de/tudarmstadt/ukp/clarin/webanno/support/sass/*.java</exclude>
                   <!-- MIT License -->

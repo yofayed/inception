@@ -22,22 +22,25 @@ import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
 import de.tudarmstadt.ukp.clarin.webanno.api.ProjectService;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupportRegistry;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
 import de.tudarmstadt.ukp.inception.kb.KnowledgeBaseService;
+import de.tudarmstadt.ukp.inception.kb.config.KnowledgeBaseProperties;
 import de.tudarmstadt.ukp.inception.kb.config.KnowledgeBaseServiceAutoConfiguration;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupportRegistry;
 import de.tudarmstadt.ukp.inception.ui.kb.KnowledgeBasePageMenuItem;
 import de.tudarmstadt.ukp.inception.ui.kb.feature.ConceptFeatureSupport;
-import de.tudarmstadt.ukp.inception.ui.kb.initializers.FactLayerInitializer;
+import de.tudarmstadt.ukp.inception.ui.kb.feature.ConceptLabelCache;
+import de.tudarmstadt.ukp.inception.ui.kb.feature.MultiValueConceptFeatureSupport;
 import de.tudarmstadt.ukp.inception.ui.kb.initializers.NamedEntityIdentifierFeatureInitializer;
 import de.tudarmstadt.ukp.inception.ui.kb.project.KnowledgeBaseProjectSettingsPanelFactory;
+import de.tudarmstadt.ukp.inception.ui.kb.project.ProjectKnowledgeBaseMenuItem;
 import de.tudarmstadt.ukp.inception.ui.kb.search.ConceptFeatureIndexingSupport;
 import de.tudarmstadt.ukp.inception.ui.kb.stmt.coloring.DefaultColoringStrategyImpl;
 import de.tudarmstadt.ukp.inception.ui.kb.stmt.coloring.DescriptionColoringStrategyImpl;
@@ -55,13 +58,13 @@ import de.tudarmstadt.ukp.inception.ui.kb.value.ValueTypeSupport;
 import de.tudarmstadt.ukp.inception.ui.kb.value.ValueTypeSupportRegistry;
 import de.tudarmstadt.ukp.inception.ui.kb.value.ValueTypeSupportRegistryImpl;
 
+@ConditionalOnWebApplication
 @Configuration
 @AutoConfigureAfter(KnowledgeBaseServiceAutoConfiguration.class)
 @ConditionalOnBean(KnowledgeBaseService.class)
 public class KnowledgeBaseServiceUIAutoConfiguration
 {
     @Bean
-    @Autowired
     public NamedEntityIdentifierFeatureInitializer namedEntityIdentifierFeatureInitializer(
             AnnotationSchemaService aAnnotationSchemaService)
     {
@@ -75,14 +78,26 @@ public class KnowledgeBaseServiceUIAutoConfiguration
     }
 
     @Bean
-    @Autowired
-    public ConceptFeatureSupport conceptFeatureSupport(KnowledgeBaseService aKbService)
+    public ConceptFeatureSupport conceptFeatureSupport(ConceptLabelCache aConceptLabelCache)
     {
-        return new ConceptFeatureSupport(aKbService);
+        return new ConceptFeatureSupport(aConceptLabelCache);
     }
 
     @Bean
-    @Autowired
+    public MultiValueConceptFeatureSupport multiValueConceptFeatureSupport(
+            ConceptLabelCache aConceptLabelCache)
+    {
+        return new MultiValueConceptFeatureSupport(aConceptLabelCache);
+    }
+
+    @Bean
+    public ConceptLabelCache conceptLabelCache(KnowledgeBaseService aKbService,
+            KnowledgeBaseProperties aKBProperties)
+    {
+        return new ConceptLabelCache(aKbService, aKBProperties);
+    }
+
+    @Bean
     public ConceptFeatureIndexingSupport conceptFeatureIndexingSupport(
             FeatureSupportRegistry aFeatureSupportRegistry, KnowledgeBaseService aKbService)
     {
@@ -158,19 +173,15 @@ public class KnowledgeBaseServiceUIAutoConfiguration
     }
 
     @Bean
-    @Autowired
     public KnowledgeBasePageMenuItem knowledgeBasePageMenuItem(UserDao aUserRepo,
             ProjectService aProjectService, KnowledgeBaseService aKbService)
     {
         return new KnowledgeBasePageMenuItem(aUserRepo, aProjectService, aKbService);
     }
 
-    @ConditionalOnProperty(prefix = "fact-layer", name = "enabled", havingValue = "true", matchIfMissing = false)
     @Bean
-    @Autowired
-    public FactLayerInitializer factLayerInitializer(
-            AnnotationSchemaService aAnnotationSchemaService)
+    public ProjectKnowledgeBaseMenuItem projectKnowledgeBaseMenuItem()
     {
-        return new FactLayerInitializer(aAnnotationSchemaService);
+        return new ProjectKnowledgeBaseMenuItem();
     }
 }

@@ -18,6 +18,7 @@
 package de.tudarmstadt.ukp.clarin.webanno.model;
 
 import java.io.Serializable;
+import java.util.Objects;
 
 public class ReorderableTag
     implements Serializable
@@ -26,6 +27,7 @@ public class ReorderableTag
 
     private final ImmutableTag tag;
     private boolean reordered;
+    private String score;
 
     public ReorderableTag(ImmutableTag aTag)
     {
@@ -34,7 +36,7 @@ public class ReorderableTag
 
     public ReorderableTag(String aName, String aDescription)
     {
-        tag = new ImmutableTag(null, aName, aDescription);
+        tag = new ImmutableTag(aName, aDescription);
     }
 
     public ReorderableTag(String aName, boolean aReordered)
@@ -74,15 +76,29 @@ public class ReorderableTag
         return tag.getName();
     }
 
+    public String getScore()
+    {
+        return score;
+    }
+
+    public void setScore(String aScore)
+    {
+        score = aScore;
+    }
+
     @Override
     public boolean equals(final Object other)
     {
-        return tag.equals(other);
+        if (!(other instanceof ReorderableTag)) {
+            return false;
+        }
+        ReorderableTag castOther = (ReorderableTag) other;
+        return Objects.equals(tag, castOther.tag);
     }
 
     @Override
     public int hashCode()
     {
-        return tag.hashCode();
+        return Objects.hash(tag);
     }
 }

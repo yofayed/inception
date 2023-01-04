@@ -18,12 +18,16 @@
 package de.tudarmstadt.ukp.clarin.webanno.curation.casdiff.span;
 
 import static java.util.Arrays.asList;
+import static java.util.stream.Collectors.toList;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
+import org.apache.uima.cas.CAS;
 import org.apache.uima.cas.FeatureStructure;
 import org.apache.uima.cas.text.AnnotationFS;
+import org.apache.uima.cas.text.AnnotationPredicates;
 import org.apache.uima.fit.util.FSUtil;
 
 import de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil;
@@ -34,6 +38,7 @@ import de.tudarmstadt.ukp.dkpro.core.api.lexmorph.type.pos.POS;
 import de.tudarmstadt.ukp.dkpro.core.api.ner.type.NamedEntity;
 import de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Sentence;
 import de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Token;
+import de.tudarmstadt.ukp.inception.annotation.layer.span.SpanRenderer;
 
 public class SpanDiffAdapter
     extends DiffAdapter_ImplBase
@@ -58,6 +63,18 @@ public class SpanDiffAdapter
     public SpanDiffAdapter(String aType, Set<String> aLabelFeatures)
     {
         super(aType, aLabelFeatures);
+    }
+
+    /**
+     * @see SpanRenderer#selectAnnotationsInWindow(CAS, int, int)
+     */
+    @Override
+    public List<AnnotationFS> selectAnnotationsInWindow(CAS aCas, int aWindowBegin, int aWindowEnd)
+    {
+        return aCas.select(getType()).coveredBy(0, aWindowEnd)
+                .includeAnnotationsWithEndBeyondBounds().map(fs -> (AnnotationFS) fs)
+                .filter(ann -> AnnotationPredicates.overlapping(ann, aWindowBegin, aWindowEnd))
+                .collect(toList());
     }
 
     @Override

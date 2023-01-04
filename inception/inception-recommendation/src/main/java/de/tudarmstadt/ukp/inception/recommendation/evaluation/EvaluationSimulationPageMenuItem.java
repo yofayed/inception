@@ -17,6 +17,8 @@
  */
 package de.tudarmstadt.ukp.inception.recommendation.evaluation;
 
+import static de.tudarmstadt.ukp.clarin.webanno.model.PermissionLevel.MANAGER;
+
 import org.apache.wicket.Page;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
@@ -30,6 +32,7 @@ import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
 import de.tudarmstadt.ukp.clarin.webanno.ui.core.menu.ProjectMenuItem;
 import de.tudarmstadt.ukp.inception.recommendation.api.RecommendationService;
 import de.tudarmstadt.ukp.inception.recommendation.config.RecommenderServiceAutoConfiguration;
+import wicket.contrib.input.events.key.KeyType;
 
 /**
  * <p>
@@ -68,7 +71,7 @@ public class EvaluationSimulationPageMenuItem
     {
         // Visible if the current user is a curator
         User user = userRepo.getCurrentUser();
-        if (!(projectService.isManager(aProject, user))) {
+        if (!(projectService.hasRole(user, aProject, MANAGER))) {
             return false;
         }
 
@@ -79,5 +82,11 @@ public class EvaluationSimulationPageMenuItem
     public Class<? extends Page> getPageClass()
     {
         return EvaluationSimulationPage.class;
+    }
+
+    @Override
+    public KeyType[] shortcut()
+    {
+        return new KeyType[] { KeyType.Alt, KeyType.s };
     }
 }

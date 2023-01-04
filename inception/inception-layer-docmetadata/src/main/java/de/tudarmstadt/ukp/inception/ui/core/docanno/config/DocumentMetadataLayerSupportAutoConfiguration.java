@@ -23,8 +23,12 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupportRegistry;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.layer.LayerType;
+import de.tudarmstadt.ukp.clarin.webanno.api.DocumentService;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupportRegistry;
+import de.tudarmstadt.ukp.inception.schema.layer.LayerSupportRegistry;
+import de.tudarmstadt.ukp.inception.schema.layer.LayerType;
+import de.tudarmstadt.ukp.inception.ui.core.docanno.layer.DocumentMetadataLayerSingletonCreatingWatcher;
 import de.tudarmstadt.ukp.inception.ui.core.docanno.layer.DocumentMetadataLayerSupport;
 import de.tudarmstadt.ukp.inception.ui.core.docanno.sidebar.DocumentMetadataSidebarFactory;
 
@@ -37,9 +41,10 @@ public class DocumentMetadataLayerSupportAutoConfiguration
 {
     @Bean
     @ConditionalOnProperty(prefix = "documentmetadata", name = "enabled", havingValue = "true", matchIfMissing = true)
-    public DocumentMetadataSidebarFactory documentMetadataSidebarFactory()
+    public DocumentMetadataSidebarFactory documentMetadataSidebarFactory(
+            AnnotationSchemaService aSchemaService)
     {
-        return new DocumentMetadataSidebarFactory();
+        return new DocumentMetadataSidebarFactory(aSchemaService);
     }
 
     /**
@@ -47,6 +52,7 @@ public class DocumentMetadataLayerSupportAutoConfiguration
      * support. Instead we return {@code true} from {@link LayerType#isInternal()} to prevent the
      * use from creating new layers of this type.
      */
+    @SuppressWarnings("javadoc")
     @Bean
     public DocumentMetadataLayerSupport documentMetadataLayerSupport(
             FeatureSupportRegistry aFeatureSupportRegistry,
@@ -55,5 +61,14 @@ public class DocumentMetadataLayerSupportAutoConfiguration
     {
         return new DocumentMetadataLayerSupport(aFeatureSupportRegistry, aEventPublisher,
                 aProperties);
+    }
+
+    @Bean
+    public DocumentMetadataLayerSingletonCreatingWatcher documentMetadataLayerSingletonCreatingWatcher(
+            DocumentService aDocumentService, AnnotationSchemaService aAnnotationService,
+            LayerSupportRegistry aLayerRegistry)
+    {
+        return new DocumentMetadataLayerSingletonCreatingWatcher(aDocumentService,
+                aAnnotationService, aLayerRegistry);
     }
 }

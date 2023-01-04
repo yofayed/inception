@@ -17,7 +17,9 @@
  */
 package de.tudarmstadt.ukp.inception.recommendation.imls.datamajority;
 
-import static de.tudarmstadt.ukp.inception.recommendation.api.recommender.RecommendationEngineCapability.TRAINING_REQUIRED;
+import static de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil.selectOverlapping;
+import static de.tudarmstadt.ukp.inception.recommendation.api.evaluation.EvaluationResult.toEvaluationResult;
+import static de.tudarmstadt.ukp.inception.recommendation.api.recommender.TrainingCapability.TRAINING_REQUIRED;
 import static org.apache.commons.lang3.StringUtils.isNotEmpty;
 
 import java.util.ArrayList;
@@ -41,16 +43,19 @@ import de.tudarmstadt.ukp.inception.recommendation.api.evaluation.EvaluationResu
 import de.tudarmstadt.ukp.inception.recommendation.api.evaluation.LabelPair;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.Recommender;
 import de.tudarmstadt.ukp.inception.recommendation.api.recommender.RecommendationEngine;
-import de.tudarmstadt.ukp.inception.recommendation.api.recommender.RecommendationEngineCapability;
 import de.tudarmstadt.ukp.inception.recommendation.api.recommender.RecommendationException;
 import de.tudarmstadt.ukp.inception.recommendation.api.recommender.RecommenderContext;
 import de.tudarmstadt.ukp.inception.recommendation.api.recommender.RecommenderContext.Key;
+import de.tudarmstadt.ukp.inception.recommendation.api.recommender.TrainingCapability;
+import de.tudarmstadt.ukp.inception.rendering.model.Range;
 
 // tag::classDefinition[]
 public class DataMajorityNerRecommender
     extends RecommendationEngine
 {
     public static final Key<DataMajorityModel> KEY_MODEL = new Key<>("model");
+
+    private static final Class<Token> DATAPOINT_UNIT = Token.class;
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -62,7 +67,7 @@ public class DataMajorityNerRecommender
 
     // tag::train[]
     @Override
-    public RecommendationEngineCapability getTrainingCapability()
+    public TrainingCapability getTrainingCapability()
     {
         return TRAINING_REQUIRED;
     }
@@ -120,22 +125,23 @@ public class DataMajorityNerRecommender
 
         String majorityLabel = entry.getKey();
         int numberOfAnnotations = model.values().stream().reduce(Integer::sum).get();
-        double confidence = (float) entry.getValue() / numberOfAnnotations;
+        double score = (float) entry.getValue() / numberOfAnnotations;
 
-        return new DataMajorityModel(majorityLabel, confidence, numberOfAnnotations);
+        return new DataMajorityModel(majorityLabel, score, numberOfAnnotations);
     }
     // end::trainModel[]
 
     // tag::predict1[]
     @Override
-    public void predict(RecommenderContext aContext, CAS aCas) throws RecommendationException
+    public Range predict(RecommenderContext aContext, CAS aCas, int aBegin, int aEnd)
+        throws RecommendationException
     {
         DataMajorityModel model = aContext.get(KEY_MODEL).orElseThrow(
                 () -> new RecommendationException("Key [" + KEY_MODEL + "] not found in context"));
 
         // Make the predictions
-        Type tokenType = CasUtil.getAnnotationType(aCas, Token.class);
-        Collection<AnnotationFS> candidates = CasUtil.select(aCas, tokenType);
+        Type tokenType = CasUtil.getAnnotationType(aCas, DATAPOINT_UNIT);
+        Collection<AnnotationFS> candidates = selectOverlapping(aCas, tokenType, aBegin, aEnd);
         List<Annotation> predictions = predict(candidates, model);
 
         // Add predictions to the CAS
@@ -153,6 +159,8 @@ public class DataMajorityNerRecommender
             annotation.setBooleanValue(isPredictionFeature, true);
             aCas.addFsToIndexes(annotation);
         }
+
+        return new Range(candidates);
     }
     // end::predict1[]
 
@@ -169,7 +177,7 @@ public class DataMajorityNerRecommender
             int begin = token.getBegin();
             int end = token.getEnd();
 
-            Annotation annotation = new Annotation(aModel.majorityLabel, aModel.confidence,
+            Annotation annotation = new Annotation(aModel.majorityLabel, aModel.score,
                     aModel.numberOfAnnotations, begin, end);
             result.add(annotation);
         }
@@ -207,7 +215,8 @@ public class DataMajorityNerRecommender
 
         if (trainingData.size() < 1 || testData.size() < 1) {
             log.info("Not enough data to evaluate, skipping!");
-            EvaluationResult result = new EvaluationResult(trainingSetSize, testSetSize,
+            EvaluationResult result = new EvaluationResult(DATAPOINT_UNIT.getSimpleName(),
+                    getRecommender().getLayer().getUiName(), trainingSetSize, testSetSize,
                     trainRatio);
             result.setEvaluationSkipped(true);
             return result;
@@ -218,7 +227,9 @@ public class DataMajorityNerRecommender
         // evaluation: collect predicted and gold labels for evaluation
         EvaluationResult result = testData.stream()
                 .map(anno -> new LabelPair(anno.label, model.majorityLabel))
-                .collect(EvaluationResult.collector(trainingSetSize, testSetSize, trainRatio));
+                .collect(toEvaluationResult(DATAPOINT_UNIT.getSimpleName(),
+                        getRecommender().getLayer().getUiName(), trainingSetSize, testSetSize,
+                        trainRatio));
 
         return result;
     }
@@ -234,14 +245,13 @@ public class DataMajorityNerRecommender
     private static class DataMajorityModel
     {
         private final String majorityLabel;
-        private final double confidence;
+        private final double score;
         private final int numberOfAnnotations;
 
-        private DataMajorityModel(String aMajorityLabel, double aConfidence,
-                int aNumberOfAnnotations)
+        private DataMajorityModel(String aMajorityLabel, double aScore, int aNumberOfAnnotations)
         {
             majorityLabel = aMajorityLabel;
-            confidence = aConfidence;
+            score = aScore;
             numberOfAnnotations = aNumberOfAnnotations;
         }
     }

@@ -50,9 +50,8 @@ import org.slf4j.LoggerFactory;
 import com.googlecode.wicket.kendo.ui.form.combobox.ComboBox;
 
 import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.DateTextField;
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.fileinput.BootstrapFileInput;
 import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.fileinput.FileInputConfig;
-import de.agilecoders.wicket.extensions.markup.html.bootstrap.form.select.BootstrapSelect;
+import de.tudarmstadt.ukp.clarin.webanno.support.bootstrap.BootstrapFileInput;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaAjaxFormComponentUpdatingBehavior;
 import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.Recommender;
@@ -142,14 +141,11 @@ public class WeblichtRecommenderTraitsEditor
         form.add(lastKeyUpdateField);
 
         FileInputConfig config = new FileInputConfig();
-        config.initialCaption("Import chain");
+        config.initialCaption("Import chain...");
         config.allowedFileExtensions(asList("xml"));
         config.maxFileCount(1);
         config.showPreview(false);
         config.showUpload(true);
-        config.removeIcon("<i class=\"fa fa-remove\"></i>");
-        config.uploadIcon("<i class=\"fa fa-upload\"></i>");
-        config.browseIcon("<i class=\"fa fa-folder-open\"></i>");
         uploadField = new BootstrapFileInput("upload", new ListModel<>(), config)
         {
             private static final long serialVersionUID = -7072183979425490246L;
@@ -189,8 +185,8 @@ public class WeblichtRecommenderTraitsEditor
             languageField.setModelObject("unknown");
         }
 
-        formatField = new BootstrapSelect<WeblichtFormat>("chainInputFormat",
-                asList(WeblichtFormat.values()), new EnumChoiceRenderer<>(this));
+        formatField = new DropDownChoice<>("chainInputFormat", asList(WeblichtFormat.values()),
+                new EnumChoiceRenderer<>(this));
         formatField.setRequired(true);
         formatField.add(new LambdaAjaxFormComponentUpdatingBehavior("change",
                 _target -> _target.add(languageField)));

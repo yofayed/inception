@@ -17,17 +17,15 @@
  */
 package de.tudarmstadt.ukp.inception.ui.core.docanno.sidebar;
 
-import static de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil.selectAnnotationByAddr;
-import static de.tudarmstadt.ukp.clarin.webanno.api.annotation.util.WebAnnoCasUtil.selectFsByAddr;
+import static de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior.visibleWhen;
 import static java.util.Collections.emptyList;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
-import org.apache.commons.lang3.exception.ExceptionUtils;
-import org.apache.uima.UIMAException;
 import org.apache.uima.cas.CAS;
 import org.apache.uima.cas.FeatureStructure;
 import org.apache.uima.cas.text.AnnotationFS;
@@ -35,7 +33,6 @@ import org.apache.wicket.Component;
 import org.apache.wicket.MetaDataKey;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.behavior.AttributeAppender;
-import org.apache.wicket.feedback.IFeedback;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.ListView;
 import org.apache.wicket.markup.html.panel.Panel;
@@ -46,30 +43,30 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wicketstuff.event.annotation.OnEvent;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
 import de.tudarmstadt.ukp.clarin.webanno.api.CasProvider;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.action.AnnotationActionHandler;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.adapter.TypeAdapter;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.exception.AnnotationException;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupport;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.FeatureSupportRegistry;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.editor.FeatureEditor;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.event.FeatureEditorValueChangedEvent;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.feature.event.LinkFeatureDeletedEvent;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotatorState;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.FeatureState;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.VID;
 import de.tudarmstadt.ukp.clarin.webanno.api.annotation.page.AnnotationPageBase;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
-import de.tudarmstadt.ukp.clarin.webanno.model.LinkMode;
-import de.tudarmstadt.ukp.clarin.webanno.model.MultiValueMode;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
 import de.tudarmstadt.ukp.clarin.webanno.model.Tag;
 import de.tudarmstadt.ukp.clarin.webanno.support.DescriptionTooltipBehavior;
-import de.tudarmstadt.ukp.clarin.webanno.support.lambda.LambdaBehavior;
+import de.tudarmstadt.ukp.clarin.webanno.support.uima.ICasUtil;
+import de.tudarmstadt.ukp.clarin.webanno.support.wicket.WicketExceptionUtil;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.AnnotationPage;
+import de.tudarmstadt.ukp.inception.annotation.feature.link.LinkFeatureDeletedEvent;
+import de.tudarmstadt.ukp.inception.annotation.feature.link.LinkFeatureEditor;
+import de.tudarmstadt.ukp.inception.editor.action.AnnotationActionHandler;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.FeatureState;
+import de.tudarmstadt.ukp.inception.rendering.vmodel.VID;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
+import de.tudarmstadt.ukp.inception.schema.adapter.AnnotationException;
+import de.tudarmstadt.ukp.inception.schema.adapter.TypeAdapter;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureEditor;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureEditorValueChangedEvent;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupport;
+import de.tudarmstadt.ukp.inception.schema.feature.FeatureSupportRegistry;
 
 public class DocumentMetadataAnnotationDetailPanel
     extends Panel
@@ -80,7 +77,7 @@ public class DocumentMetadataAnnotationDetailPanel
             .getLogger(DocumentMetadataAnnotationDetailPanel.class);
 
     private static final String CID_EDITOR = "editor";
-    private static final String CID_FEATURE_VALUES = "featureValues";
+    private static final String CID_FEATURE_EDITORS = "featureEditors";
 
     public static final String ID_PREFIX = "metaFeatureEditorHead";
 
@@ -93,14 +90,12 @@ public class DocumentMetadataAnnotationDetailPanel
     private final IModel<SourceDocument> sourceDocument;
     private final IModel<String> username;
     private final ListView<FeatureState> featureList;
-    private final DocumentMetadataAnnotationSelectionPanel selectionPanel;
     private final AnnotationActionHandler actionHandler;
     private final AnnotatorState state;
 
     public DocumentMetadataAnnotationDetailPanel(String aId, IModel<VID> aModel,
             IModel<SourceDocument> aDocument, IModel<String> aUsername, CasProvider aCasProvider,
             IModel<Project> aProject, AnnotationPage aAnnotationPage,
-            DocumentMetadataAnnotationSelectionPanel aSelectionPanel,
             AnnotationActionHandler aActionHandler, AnnotatorState aState)
     {
         super(aId, aModel);
@@ -112,13 +107,20 @@ public class DocumentMetadataAnnotationDetailPanel
         annotationPage = aAnnotationPage;
         jcasProvider = aCasProvider;
         project = aProject;
-        selectionPanel = aSelectionPanel;
         actionHandler = aActionHandler;
         state = aState;
 
         add(featureList = createFeaturesList());
+    }
 
-        add(LambdaBehavior.visibleWhen(this::isVisible));
+    @Override
+    protected void onConfigure()
+    {
+        super.onConfigure();
+
+        add(visibleWhen(this::isVisible));
+        setEnabled(annotationPage.isEditable()
+                && !getLayer().map(AnnotationLayer::isReadonly).orElse(true));
     }
 
     public VID getModelObject()
@@ -128,7 +130,7 @@ public class DocumentMetadataAnnotationDetailPanel
 
     private ListView<FeatureState> createFeaturesList()
     {
-        return new ListView<FeatureState>(CID_FEATURE_VALUES,
+        return new ListView<FeatureState>(CID_FEATURE_EDITORS,
                 LoadableDetachableModel.of(this::listFeatures))
         {
             private static final long serialVersionUID = -1139622234318691941L;
@@ -136,16 +138,12 @@ public class DocumentMetadataAnnotationDetailPanel
             @Override
             protected void populateItem(ListItem<FeatureState> item)
             {
-                // Feature editors that allow multiple values may want to update themselves,
-                // e.g. to add another slot.
-                item.setOutputMarkupId(true);
-
                 final FeatureState featureState = item.getModelObject();
                 final FeatureEditor editor;
 
                 // Look up a suitable editor and instantiate it
-                FeatureSupport featureSupport = featureSupportRegistry
-                        .getFeatureSupport(featureState.feature);
+                FeatureSupport<?> featureSupport = featureSupportRegistry
+                        .findExtension(featureState.feature).orElseThrow();
                 editor = featureSupport.createEditor(CID_EDITOR,
                         DocumentMetadataAnnotationDetailPanel.this, actionHandler,
                         annotationPage.getModel(), item.getModel());
@@ -155,10 +153,8 @@ public class DocumentMetadataAnnotationDetailPanel
                     // component for the feature lost focus - but updating is for every component
                     // edited LinkFeatureEditors must be excluded because the auto-update will break
                     // the ability to add slots. Adding a slot is NOT an annotation action.
-                    AnnotationFeature feature = featureState.feature;
-                    if (!(feature.getMultiValueMode().equals(MultiValueMode.ARRAY)
-                            && feature.getLinkMode().equals(LinkMode.WITH_ROLE))) {
-                        addAnnotateActionBehavior(editor);
+                    if (!(editor instanceof LinkFeatureEditor)) {
+                        editor.addFeatureUpdateBehavior();
                     }
 
                     // Add tooltip on label
@@ -182,7 +178,6 @@ public class DocumentMetadataAnnotationDetailPanel
                 // We need to enable the markup ID here because we use it during the AJAX behavior
                 // that automatically saves feature editors on change/blur.
                 // Check addAnnotateActionBehavior.
-                editor.setOutputMarkupId(true);
                 editor.setOutputMarkupPlaceholderTag(true);
 
                 // Ensure that markup IDs of feature editor focus components remain constant
@@ -195,6 +190,32 @@ public class DocumentMetadataAnnotationDetailPanel
                 item.add(editor);
             }
         };
+    }
+
+    private Optional<AnnotationLayer> getLayer()
+    {
+        VID vid = getModelObject();
+        Project proj = project.getObject();
+
+        CAS cas;
+        try {
+            cas = jcasProvider.get();
+        }
+        catch (IOException e) {
+            LOG.error("Unable to load CAS", e);
+            return Optional.empty();
+        }
+
+        FeatureStructure fs;
+        try {
+            fs = ICasUtil.selectFsByAddr(cas, vid.getId());
+        }
+        catch (Exception e) {
+            LOG.error("Unable to locate annotation with ID {}", vid);
+            return Optional.empty();
+        }
+
+        return Optional.of(annotationService.findLayer(proj, fs));
     }
 
     private List<FeatureState> listFeatures()
@@ -217,7 +238,7 @@ public class DocumentMetadataAnnotationDetailPanel
 
         FeatureStructure fs;
         try {
-            fs = selectFsByAddr(cas, vid.getId());
+            fs = ICasUtil.selectFsByAddr(cas, vid.getId());
         }
         catch (Exception e) {
             LOG.error("Unable to locate annotation with ID {}", vid);
@@ -247,21 +268,18 @@ public class DocumentMetadataAnnotationDetailPanel
         return featureStates;
     }
 
-    private void addAnnotateActionBehavior(final FeatureEditor aFrag)
-    {
-        aFrag.addFeatureUpdateBehavior();
-    }
-
     private void actionAnnotate(AjaxRequestTarget aTarget)
     {
         try {
+            annotationPage.ensureIsEditable();
+
             // When updating an annotation in the sidebar, we must not force a
             // re-focus after rendering
             getRequestCycle().setMetaData(IsSidebarAction.INSTANCE, true);
 
             // Load the boiler-plate
             CAS cas = jcasProvider.get();
-            FeatureStructure fs = selectFsByAddr(cas, getModelObject().getId());
+            FeatureStructure fs = ICasUtil.selectFsByAddr(cas, getModelObject().getId());
             AnnotationLayer layer = annotationService.findLayer(project.getObject(), fs);
             TypeAdapter adapter = annotationService.getAdapter(layer);
 
@@ -275,11 +293,13 @@ public class DocumentMetadataAnnotationDetailPanel
             findParent(AnnotationPageBase.class).actionRefreshDocument(aTarget);
         }
         catch (Exception e) {
-            handleException(DocumentMetadataAnnotationDetailPanel.this, aTarget, e);
+            WicketExceptionUtil.handleException(LOG, DocumentMetadataAnnotationDetailPanel.this,
+                    aTarget, e);
         }
     }
 
-    private void writeFeatureEditorModelsToCas(TypeAdapter aAdapter, CAS aCas) throws IOException
+    private void writeFeatureEditorModelsToCas(TypeAdapter aAdapter, CAS aCas)
+        throws IOException, AnnotationException
     {
         List<FeatureState> featureStates = featureList.getModelObject();
 
@@ -309,30 +329,6 @@ public class DocumentMetadataAnnotationDetailPanel
         }
     }
 
-    protected static void handleException(Component aComponent, AjaxRequestTarget aTarget,
-            Exception aException)
-    {
-        if (aTarget != null) {
-            aTarget.addChildren(aComponent.getPage(), IFeedback.class);
-        }
-
-        try {
-            throw aException;
-        }
-        catch (AnnotationException e) {
-            aComponent.error("Error: " + e.getMessage());
-            LOG.error("Error: " + ExceptionUtils.getRootCauseMessage(e), e);
-        }
-        catch (UIMAException e) {
-            aComponent.error("Error: " + ExceptionUtils.getRootCauseMessage(e));
-            LOG.error("Error: " + ExceptionUtils.getRootCauseMessage(e), e);
-        }
-        catch (Exception e) {
-            aComponent.error("Error: " + e.getMessage());
-            LOG.error("Error: " + e.getMessage(), e);
-        }
-    }
-
     private static final class IsSidebarAction
         extends MetaDataKey<Boolean>
     {
@@ -353,7 +349,8 @@ public class DocumentMetadataAnnotationDetailPanel
         AjaxRequestTarget target = aEvent.getTarget();
         try {
             CAS cas = jcasProvider.get();
-            AnnotationFS fs = selectAnnotationByAddr(cas, aEvent.getLinkWithRoleModel().targetAddr);
+            AnnotationFS fs = ICasUtil.selectAnnotationByAddr(cas,
+                    aEvent.getLinkWithRoleModel().targetAddr);
             state.getSelection().selectSpan(fs);
             if (state.getSelection().getAnnotation().isSet()) {
                 actionHandler.actionDelete(target);
@@ -362,7 +359,8 @@ public class DocumentMetadataAnnotationDetailPanel
             }
         }
         catch (IOException | AnnotationException e) {
-            handleException(this, target, e);
+            WicketExceptionUtil.handleException(LOG, DocumentMetadataAnnotationDetailPanel.this,
+                    target, e);
         }
     }
 

@@ -17,6 +17,8 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.ui.core.footer;
 
+import static de.tudarmstadt.ukp.clarin.webanno.support.logging.BaseLoggers.BOOT_LOG;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -61,9 +63,12 @@ public class FooterItemRegistryImpl
             AnnotationAwareOrderComparator.sort(exts);
 
             for (FooterItem fs : exts) {
-                log.info("Found footer item: {}", ClassUtils.getAbbreviatedName(fs.getClass(), 20));
+                log.debug("Found footer item: {}",
+                        ClassUtils.getAbbreviatedName(fs.getClass(), 20));
             }
         }
+
+        BOOT_LOG.info("Found [{}] footer items", exts.size());
 
         extensions = Collections.unmodifiableList(exts);
     }

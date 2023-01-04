@@ -17,6 +17,8 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.support;
 
+import static com.fasterxml.jackson.databind.DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_USING_DEFAULT_VALUE;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,12 +34,26 @@ import com.fasterxml.jackson.core.util.DefaultIndenter;
 import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 public class JSONUtil
 {
+    private static final ObjectMapper OBJECT_MAPPER;
+
+    static {
+        OBJECT_MAPPER = new ObjectMapper();
+        OBJECT_MAPPER.registerModule(new JavaTimeModule());
+        // Used mainly by traits e.g. when switching from a string to a number trait or back where
+        // the editortype property has different ranges
+        OBJECT_MAPPER.configure(READ_UNKNOWN_ENUM_VALUES_USING_DEFAULT_VALUE, true);
+
+    }
+
     /**
      * Convert Java objects into JSON format and write it to a file
-     *
+     * 
+     * @param aMapper
+     *            the object mapper to be used
      * @param aObject
      *            the object.
      * @param aFile
@@ -103,7 +119,7 @@ public class JSONUtil
 
     public static ObjectMapper getObjectMapper()
     {
-        return new ObjectMapper();
+        return OBJECT_MAPPER;
     }
 
     public static String toInterpretableJsonString(Object aObject) throws IOException

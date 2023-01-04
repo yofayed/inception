@@ -17,24 +17,37 @@
  */
 package de.tudarmstadt.ukp.inception.image.sidebar;
 
-import org.apache.wicket.model.IModel;
-import org.apache.wicket.request.resource.PackageResourceReference;
-import org.apache.wicket.request.resource.ResourceReference;
-import org.springframework.stereotype.Component;
+import static de.tudarmstadt.ukp.inception.image.feature.ImageFeatureSupport.TYPE_IMAGE_URL;
 
+import org.apache.wicket.model.IModel;
+
+import de.agilecoders.wicket.core.markup.html.bootstrap.image.IconType;
+import de.agilecoders.wicket.extensions.markup.html.bootstrap.icon.FontAwesome5IconType;
 import de.tudarmstadt.ukp.clarin.webanno.api.CasProvider;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.action.AnnotationActionHandler;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.model.AnnotatorState;
+import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.AnnotationPage;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.sidebar.AnnotationSidebarFactory_ImplBase;
 import de.tudarmstadt.ukp.clarin.webanno.ui.annotation.sidebar.AnnotationSidebar_ImplBase;
+import de.tudarmstadt.ukp.inception.editor.action.AnnotationActionHandler;
+import de.tudarmstadt.ukp.inception.image.config.ImageSupportAutoConfiguration;
+import de.tudarmstadt.ukp.inception.rendering.editorstate.AnnotatorState;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
 
-@Component
+/**
+ * <p>
+ * This class is exposed as a Spring Component via
+ * {@link ImageSupportAutoConfiguration#imageSidebarFactory}.
+ * </p>
+ */
 public class ImageSidebarFactory
     extends AnnotationSidebarFactory_ImplBase
 {
-    private static final ResourceReference ICON = new PackageResourceReference(
-            ImageSidebarFactory.class, "images.png");
+    private final AnnotationSchemaService schemaService;
+
+    public ImageSidebarFactory(AnnotationSchemaService aSchemaService)
+    {
+        schemaService = aSchemaService;
+    }
 
     @Override
     public String getDisplayName()
@@ -43,9 +56,28 @@ public class ImageSidebarFactory
     }
 
     @Override
-    public ResourceReference getIcon()
+    public String getDescription()
     {
-        return ICON;
+        return "Displays images linked to annotations that are currently visible on screen. Only "
+                + "available if the project defines at least one image feature on any layer.";
+    }
+
+    @Override
+    public IconType getIcon()
+    {
+        return FontAwesome5IconType.images_s;
+    }
+
+    @Override
+    public boolean available(Project aProject)
+    {
+        return schemaService.existsEnabledFeatureOfType(aProject, TYPE_IMAGE_URL);
+    }
+
+    @Override
+    public boolean applies(AnnotatorState aState)
+    {
+        return available(aState.getProject());
     }
 
     @Override

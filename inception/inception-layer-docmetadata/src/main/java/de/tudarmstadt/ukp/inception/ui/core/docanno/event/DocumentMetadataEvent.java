@@ -19,9 +19,10 @@ package de.tudarmstadt.ukp.inception.ui.core.docanno.event;
 
 import org.apache.uima.cas.AnnotationBaseFS;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.event.AnnotationEvent;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
+import de.tudarmstadt.ukp.inception.annotation.events.AnnotationEvent;
+import de.tudarmstadt.ukp.inception.rendering.model.Range;
 
 public class DocumentMetadataEvent
     extends AnnotationEvent
@@ -41,6 +42,12 @@ public class DocumentMetadataEvent
     public AnnotationBaseFS getAnnotation()
     {
         return annotation;
+    }
+
+    @Override
+    public Range getAffectedRange()
+    {
+        return Range.UNDEFINED;
     }
 
     @Override

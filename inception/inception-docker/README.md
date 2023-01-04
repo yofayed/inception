@@ -28,6 +28,16 @@ For a release build:
         
     docker run -p8080:8080 -v inception-data:/export -it inceptionproject/inception
 
+## Multi-platform build for ARM46 and AMD64
+
+To build a docker images which runs on AMD64 as well as ARM64 machines, use:
+
+    docker buildx create --use          (need to do this only once!)
+    mvn -Pdocker-buildx clean package   (will be pushed immediately!)
+
+Mind that you may have to log in to DockerHub before being able to publish. This can be done e.g.
+via Docker Desktop or on the command line via `docker login`.
+
 ## Options
 If you want to keep the application data easily accessible in a folder on your host (e.g. if you
 want to use a custom settings.properties file), you can provide a path on the host to the `-v` 

@@ -1,8 +1,4 @@
 /*
- * Copyright 2017
- * Ubiquitous Knowledge Processing (UKP) Lab
- * Technische Universität Darmstadt
- * 
  * Licensed to the Technische Universität Darmstadt under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -27,28 +23,36 @@ import java.util.Optional;
 
 import org.apache.uima.cas.CAS;
 
-import de.tudarmstadt.ukp.clarin.webanno.api.AnnotationSchemaService;
-import de.tudarmstadt.ukp.clarin.webanno.api.annotation.exception.AnnotationException;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationFeature;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.SourceDocument;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
 import de.tudarmstadt.ukp.clarin.webanno.support.logging.LogMessageGroup;
+import de.tudarmstadt.ukp.inception.preferences.Key;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.EvaluatedRecommender;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.Predictions;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.Preferences;
+import de.tudarmstadt.ukp.inception.recommendation.api.model.Progress;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.Recommender;
+import de.tudarmstadt.ukp.inception.recommendation.api.model.RecommenderGeneralSettings;
+import de.tudarmstadt.ukp.inception.recommendation.api.model.RelationSuggestion;
+import de.tudarmstadt.ukp.inception.recommendation.api.model.SpanSuggestion;
 import de.tudarmstadt.ukp.inception.recommendation.api.model.SuggestionGroup;
 import de.tudarmstadt.ukp.inception.recommendation.api.recommender.RecommendationEngineFactory;
 import de.tudarmstadt.ukp.inception.recommendation.api.recommender.RecommenderContext;
+import de.tudarmstadt.ukp.inception.schema.AnnotationSchemaService;
+import de.tudarmstadt.ukp.inception.schema.adapter.AnnotationException;
 
 /**
- * The main contact point of the Recommendation module. This interface can be injected in the wicket
+ * The main contact point of the Recommendation module. This interface can be injected in the Wicket
  * pages. It is used to pull the latest recommendations for an annotation layer and render them.
  */
 public interface RecommendationService
 {
+    Key<RecommenderGeneralSettings> KEY_RECOMMENDER_GENERAL_SETTINGS = new Key<>(
+            RecommenderGeneralSettings.class, "recommendation/general");
+
     String FEATURE_NAME_IS_PREDICTION = "inception_internal_predicted";
     String FEATURE_NAME_SCORE_SUFFIX = "_score";
     String FEATURE_NAME_SCORE_EXPLANATION_SUFFIX = "_score_explanation";
@@ -68,25 +72,42 @@ public interface RecommendationService
 
     List<Recommender> listRecommenders(Project aProject);
 
+    boolean existsEnabledRecommender(Project aProject);
+
     List<Recommender> listRecommenders(AnnotationLayer aLayer);
 
     Optional<Recommender> getEnabledRecommender(long aRecommenderId);
 
     List<Recommender> listEnabledRecommenders(Project aProject);
 
+    List<Recommender> listEnabledRecommenders(AnnotationLayer aLayer);
+
     /**
-     * Returns all annotation layers in the given project which have any enabled recommenders.
+     * @param aProject
+     *            the project
+     * @return all annotation layers in the given project which have any enabled recommenders.
      */
     List<AnnotationLayer> listLayersWithEnabledRecommenders(Project aProject);
 
-    RecommendationEngineFactory getRecommenderFactory(Recommender aRecommender);
+    /**
+     * @param aRecommender
+     *            the recommender
+     * @return the recommender factory for the given recommender. This can be empty if e.g. a
+     *         recommender is only available behind a feature flag that was once enabled and now is
+     *         disabled.
+     */
+    Optional<RecommendationEngineFactory<?>> getRecommenderFactory(Recommender aRecommender);
 
     boolean hasActiveRecommenders(String aUser, Project aProject);
+
+    List<EvaluatedRecommender> getActiveRecommenders(User aUser, Project aProject);
 
     void setEvaluatedRecommenders(User aUser, AnnotationLayer layer,
             List<EvaluatedRecommender> selectedClassificationTools);
 
     List<EvaluatedRecommender> getEvaluatedRecommenders(User aUser, AnnotationLayer aLayer);
+
+    Optional<EvaluatedRecommender> getEvaluatedRecommender(User aUser, Recommender aRecommender);
 
     List<EvaluatedRecommender> getActiveRecommenders(User aUser, AnnotationLayer aLayer);
 
@@ -104,7 +125,7 @@ public interface RecommendationService
 
     /**
      * Returns the {@code RecommenderContext} for the given recommender if it exists.
-     * 
+     *
      * @param aUser
      *            The owner of the context
      * @param aRecommender
@@ -115,7 +136,7 @@ public interface RecommendationService
 
     /**
      * Publishes a new context for the given recommender.
-     * 
+     *
      * @param aUser
      *            The owner of the context.
      * @param aRecommender
@@ -129,41 +150,89 @@ public interface RecommendationService
      * Uses the given annotation suggestion to create a new annotation or to update a feature in an
      * existing annotation.
      * 
+     * @param annotationService
+     *            the annotation schema service
+     * @param aDocument
+     *            the source document to which the annotations belong
+     * @param aUsername
+     *            the annotator user to whom the annotations belong
+     * @param aCas
+     *            the CAS containing the annotations
+     * @param layer
+     *            the layer to upsert
+     * @param aFeature
+     *            the feature on the layer that should be upserted
+     * @param aValue
+     *            the new value
+     * @param aBegin
+     *            the position of the annotation (in case it is created)
+     * @param aEnd
+     *            the position of the annotation (in case it is created)
+     *
      * @return the CAS address of the created/updated annotation.
+     * @throws AnnotationException
+     *             if there was an annotation-level problem
      */
-    public int upsertFeature(AnnotationSchemaService annotationService, SourceDocument aDocument,
+    int upsertSpanFeature(AnnotationSchemaService annotationService, SourceDocument aDocument,
             String aUsername, CAS aCas, AnnotationLayer layer, AnnotationFeature aFeature,
             String aValue, int aBegin, int aEnd)
         throws AnnotationException;
 
+    int upsertRelationFeature(AnnotationSchemaService annotationService, SourceDocument aDocument,
+            String aUsername, CAS aCas, AnnotationLayer layer, AnnotationFeature aFeature,
+            RelationSuggestion aSuggestion)
+        throws AnnotationException;
+
     /**
      * Compute predictions.
-     * 
+     *
      * @param aUser
      *            the user to compute the predictions for.
      * @param aProject
      *            the project to compute the predictions for.
      * @param aDocuments
      *            the documents to compute the predictions for.
-     * @param aInherit
-     *            any documents for which to inherit the predictions from a previous run
      * @return the new predictions.
      */
-    Predictions computePredictions(User aUser, Project aProject, List<SourceDocument> aDocuments,
-            List<SourceDocument> aInherit);
+    Predictions computePredictions(User aUser, Project aProject, List<SourceDocument> aDocuments);
 
-    void calculateVisibility(CAS aCas, String aUser, AnnotationLayer aLayer,
-            Collection<SuggestionGroup> aRecommendations, int aWindowBegin, int aWindowEnd);
+    /**
+     * Compute predictions.
+     *
+     * @param aUser
+     *            the user to compute the predictions for.
+     * @param aProject
+     *            the project to compute the predictions for.
+     * @param aCurrentDocument
+     *            the document to compute the predictions for.
+     * @param aInherit
+     *            any documents for which to inherit the predictions from a previous run
+     * @param aPredictionBegin
+     *            begin of the prediction range (negative to predict from 0)
+     * @param aPredictionEnd
+     *            end of the prediction range (negative to predict until the end of the document)
+     * @return the new predictions.
+     */
+    Predictions computePredictions(User aUser, Project aProject, SourceDocument aCurrentDocument,
+            List<SourceDocument> aInherit, int aPredictionBegin, int aPredictionEnd);
 
-    List<Recommender> listEnabledRecommenders(AnnotationLayer aLayer);
+    void calculateSpanSuggestionVisibility(SourceDocument aDocument, CAS aCas, String aUser,
+            AnnotationLayer aLayer, Collection<SuggestionGroup<SpanSuggestion>> aRecommendations,
+            int aWindowBegin, int aWindowEnd);
+
+    void calculateRelationSuggestionVisibility(CAS aCas, String aUser, AnnotationLayer aLayer,
+            Collection<SuggestionGroup<RelationSuggestion>> aRecommendations, int aWindowBegin,
+            int aWindowEnd);
 
     void clearState(String aUsername);
 
-    void triggerTrainingAndClassification(String aUser, Project aProject, String aEventName,
+    void triggerPrediction(String aUsername, String aEventName, SourceDocument aDocument);
+
+    void triggerTrainingAndPrediction(String aUser, Project aProject, String aEventName,
             SourceDocument aCurrentDocument);
 
-    void triggerSelectionTrainingAndClassification(String aUser, Project aProject,
-            String aEventName, SourceDocument aCurrentDocument);
+    void triggerSelectionTrainingAndPrediction(String aUser, Project aProject, String aEventName,
+            SourceDocument aCurrentDocument);
 
     boolean isPredictForAllDocuments(String aUser, Project aProject);
 
@@ -172,7 +241,9 @@ public interface RecommendationService
     List<LogMessageGroup> getLog(String aUser, Project aProject);
 
     /**
-     * Retrieve the total amount of enabled recommenders
+     * @return the total amount of enabled recommenders
      */
     long countEnabledRecommenders();
+
+    Progress getProgressTowardsNextEvaluation(User aUser, Project aProject);
 }

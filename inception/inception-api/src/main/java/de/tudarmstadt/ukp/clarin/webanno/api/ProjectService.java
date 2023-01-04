@@ -17,25 +17,35 @@
  */
 package de.tudarmstadt.ukp.clarin.webanno.api;
 
+import static de.tudarmstadt.ukp.clarin.webanno.support.logging.Logging.KEY_PROJECT_ID;
+import static de.tudarmstadt.ukp.clarin.webanno.support.logging.Logging.KEY_REPOSITORY_PATH;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
+import org.apache.commons.lang3.Validate;
+import org.slf4j.MDC;
 import org.springframework.security.access.prepost.PreAuthorize;
 
+import de.tudarmstadt.ukp.clarin.webanno.api.event.ProjectStateChangedEvent;
 import de.tudarmstadt.ukp.clarin.webanno.api.project.ProjectInitializer;
 import de.tudarmstadt.ukp.clarin.webanno.model.AnnotationLayer;
 import de.tudarmstadt.ukp.clarin.webanno.model.PermissionLevel;
 import de.tudarmstadt.ukp.clarin.webanno.model.Project;
 import de.tudarmstadt.ukp.clarin.webanno.model.ProjectPermission;
+import de.tudarmstadt.ukp.clarin.webanno.model.ProjectState;
+import de.tudarmstadt.ukp.clarin.webanno.model.ProjectUserPermissions;
 import de.tudarmstadt.ukp.clarin.webanno.model.Tag;
 import de.tudarmstadt.ukp.clarin.webanno.model.TagSet;
-import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
-import de.tudarmstadt.ukp.clarin.webanno.security.model.Authority;
+import de.tudarmstadt.ukp.clarin.webanno.security.Realm;
 import de.tudarmstadt.ukp.clarin.webanno.security.model.User;
+import de.tudarmstadt.ukp.clarin.webanno.support.logging.MDCContext;
 
 public interface ProjectService
 {
@@ -44,7 +54,6 @@ public interface ProjectService
     String PROJECT_FOLDER = "project";
     String DOCUMENT_FOLDER = "document";
     String SOURCE_FOLDER = "source";
-    String GUIDELINES_FOLDER = "guideline";
     String ANNOTATION_FOLDER = "annotation";
     String SETTINGS_FOLDER = "settings";
     String META_INF_FOLDER = "META-INF";
@@ -53,100 +62,180 @@ public interface ProjectService
     /**
      * creates a project permission, adding permission level for the user in the given project
      *
-     * @param permission
+     * @param aPermission
      *            the permission
+     * @deprecated Use {@link #assignRole(Project, User, PermissionLevel...)} instead.
      */
+    @Deprecated
     @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_USER', 'ROLE_REMOTE')")
-    void createProjectPermission(ProjectPermission permission);
+    void createProjectPermission(ProjectPermission aPermission);
+
+    /**
+     * @deprecated Use {@link #revokeRole(Project, User, PermissionLevel...)} instead.
+     */
+    @SuppressWarnings("javadoc")
+    @Deprecated
+    void removeProjectPermission(ProjectPermission aPermission);
 
     /**
      * Check if a user have at least one {@link PermissionLevel } for this {@link Project}
      *
-     * @param user
+     * @param aUser
      *            the user.
-     * @param project
+     * @param aProject
      *            the project.
      *
      * @return if the project permission exists.
+     * @deprecated Use {@link #hasAnyRole(User, Project)}
      */
-    boolean existsProjectPermission(User user, Project project);
+    @Deprecated
+    boolean existsProjectPermission(User aUser, Project aProject);
 
     /**
      * Check if there is already a {@link PermissionLevel} on a given {@link Project} for a given
      * {@link User}
      *
-     * @param user
+     * @param aUser
      *            the user.
-     * @param project
+     * @param aProject
      *            the project.
-     * @param level
+     * @param aLevel
      *            the permission level.
      *
      * @return if the permission exists.
+     * @deprecated Use {@link #hasRole(User, Project, PermissionLevel, PermissionLevel...)}
      */
-    boolean existsProjectPermissionLevel(User user, Project project, PermissionLevel level);
+    @Deprecated
+    boolean existsProjectPermissionLevel(User aUser, Project aProject, PermissionLevel aLevel);
 
     /**
-     * Get a {@link ProjectPermission }objects where a project is member of. We need to get them,
+     * Get a {@link ProjectPermission} objects where a project is member of. We need to get them,
      * for example if the associated {@link Project} is deleted, the {@link ProjectPermission }
      * objects too.
      *
-     * @param project
+     * @param aProject
      *            The project contained in a projectPermision
      * @return the {@link ProjectPermission } list to be analysed.
      */
-    List<ProjectPermission> getProjectPermissions(Project project);
+    List<ProjectPermission> listProjectPermissions(Project aProject);
+
+    /**
+     * @deprecated Use {@link #listProjectPermissions(Project)} instead
+     */
+    @SuppressWarnings("javadoc")
+    @Deprecated
+    List<ProjectPermission> getProjectPermissions(Project aProject);
+
+    List<ProjectUserPermissions> listProjectUserPermissions(Project aProject);
 
     /**
      * Get list of permissions a user have in a given project
      *
-     * @param user
+     * @param aUser
      *            the user.
-     * @param project
+     * @param aProject
      *            the project.
      *
      * @return the permissions.
      */
-    List<ProjectPermission> listProjectPermissionLevel(User user, Project project);
+    List<ProjectPermission> listProjectPermissionLevel(User aUser, Project aProject);
 
+    List<ProjectPermission> listProjectPermissionLevel(String aUser, Project aProject);
+
+    /**
+     * @deprecated Use {@link #listRoles(Project, User)} instead.
+     */
+    @SuppressWarnings("javadoc")
+    @Deprecated
     List<PermissionLevel> getProjectPermissionLevels(User aUser, Project aProject);
+
+    List<ProjectPermission> listProjectPermissions(User aUser);
+
+    void setProjectPermissionLevels(String aUser, Project aProject,
+            Collection<PermissionLevel> aLevels);
 
     void setProjectPermissionLevels(User aUser, Project aProject,
             Collection<PermissionLevel> aLevels);
 
+    void assignRole(Project aProject, User aUser, PermissionLevel... aRoles);
+
+    /**
+     * It may be necessary to use this method e.g. when importing data in case the user does not
+     * exist in the system.
+     * 
+     * @deprecated Should not be used. Better use
+     *             {@link #assignRole(Project, User, PermissionLevel...)}
+     */
+    @SuppressWarnings("javadoc")
+    @Deprecated
+    void assignRole(Project aProject, String aUser, PermissionLevel... aRoles);
+
+    void revokeRole(Project aProject, User aUser, PermissionLevel... aRoles);
+
+    void revokeAllRoles(Project aProject, User aUser);
+
+    List<PermissionLevel> listRoles(Project aProject, User aUser);
+
+    List<PermissionLevel> listRoles(Project aProject, String aUser);
+
     /**
      * List Users those with some {@link PermissionLevel}s in the project
      *
-     * @param project
+     * @param aProject
      *            the project.
      * @return the users.
      */
-    List<User> listProjectUsersWithPermissions(Project project);
+    List<User> listProjectUsersWithPermissions(Project aProject);
 
     /**
      * List of users with the a given {@link PermissionLevel}
      *
-     * @param project
+     * @param aProject
      *            The {@link Project}
-     * @param permissionLevel
+     * @param aPermissionLevel
      *            The {@link PermissionLevel}
      * @return the users.
      */
-    List<User> listProjectUsersWithPermissions(Project project, PermissionLevel permissionLevel);
+    List<User> listProjectUsersWithPermissions(Project aProject, PermissionLevel aPermissionLevel);
 
     /**
-     * remove a user permission from the project
-     *
-     * @param projectPermission
-     *            The ProjectPermission to be removed
+     * Removes all permissions for the given user to the given project.
+     * 
+     * @deprecated use {@link #revokeAllRoles(Project, User)}
      */
-    @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_USER')")
-    void removeProjectPermission(ProjectPermission projectPermission);
+    @SuppressWarnings("javadoc")
+    @Deprecated
+    void leaveProject(User aObject, Project aProject);
 
     /**
-     * list Projects which contain with those annotation documents state is finished
+     * @return list of projects which contain with those annotation documents state is finished
      */
     List<Project> listProjectsWithFinishedAnnos();
+
+    /**
+     * List all projects in which the given user has any of the provided roles. Note that the split
+     * into two arguments is only for the compiler to be able to check if at least one role has been
+     * specified. The first role is not privileged over the other roles in any way!
+     * 
+     * @param aUser
+     *            the user.
+     * @param aRole
+     *            at least one role must be given, but the check is against this role OR any of the
+     *            additional roles.
+     * @param aMoreRoles
+     *            more roles.
+     * @return the list of projects.
+     */
+    List<Project> listProjectsWithUserHavingRole(User aUser, PermissionLevel aRole,
+            PermissionLevel... aMoreRoles);
+
+    /**
+     * @return list of all projects in which the given user has any role at all.
+     * 
+     * @param aUser
+     *            the user.
+     */
+    List<Project> listProjectsWithUserHavingAnyRole(User aUser);
 
     // --------------------------------------------------------------------------------------------
     // Methods related to Projects
@@ -157,104 +246,96 @@ public interface ProjectService
      * time the project is created, an associated project path will be created on the file system as
      * {@code webanno.home/project/Project.id }
      *
-     * @param project
+     * @param aProject
      *            The {@link Project} object to be created.
      * @throws IOException
      *             If the specified webanno.home directory is not available no write permission
+     * @return the project;
      */
-    @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_REMOTE','ROLE_PROJECT_CREATOR')")
-    void createProject(Project project) throws IOException;
+    Project createProject(Project aProject) throws IOException;
 
     /**
      * Update a project. This is only necessary when dealing with a detached project entity.
      * 
-     * @param project
+     * @param aProject
      *            The {@link Project} object to be updated.
      */
-    @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_REMOTE','ROLE_PROJECT_CREATOR')")
-    void updateProject(Project project);
+    void updateProject(Project aProject);
 
     /**
-     * Update the project state.
+     * Update the project state and issue a {@link ProjectStateChangedEvent} if necessary. Make sure
+     * that the status of the project object is fresh to avoid getting spurious events.
      * 
      * @param aProject
-     *            The {@link Project} to be updated.
+     *            The {@link Project} object to be updated.
+     * @param aState
+     *            the new state.
      */
-    void recalculateProjectState(Project aProject);
+    void setProjectState(Project aProject, ProjectState aState);
 
     /**
-     * A method that check is a project exists with the same name already. getSingleResult() fails
-     * if the project is not created, hence existProject returns false.
+     * Check if a project with the given name already exists.
      *
-     * @param name
+     * @param aName
      *            the project name.
      * @return if the project exists.
      */
-    boolean existsProject(String name);
+    boolean existsProjectWithName(String aName);
 
     /**
-     * Check if there exists an project timestamp for this user and {@link Project}.
+     * Check if a project with the given URL slug already exists.
      *
-     * @param project
-     *            the project.
-     * @param username
-     *            the username.
-     * @return if a timestamp exists.
+     * @param aSlug
+     *            the project slug.
+     * @return if the project exists.
      */
-    boolean existsProjectTimeStamp(Project project, String username);
-
-    /**
-     * check if there exists a timestamp for at least one source document in aproject (add when a
-     * curator start curating)
-     *
-     * @param project
-     *            the project.
-     * @return if a timestamp exists.
-     */
-    boolean existsProjectTimeStamp(Project project);
+    boolean existsProjectWithSlug(String aSlug);
 
     /**
      * Get a timestamp of for this {@link Project} of this username
      *
-     * @param project
+     * @param aProject
      *            the project.
-     * @param username
+     * @param aUsername
      *            the username.
      * @return the timestamp.
+     * @deprecated To be removed without replacement
      */
-    Date getProjectTimeStamp(Project project, String username);
+    @Deprecated
+    Date getProjectTimeStamp(Project aProject, String aUsername);
 
     /**
      * get the timestamp, of the curator, if exist
      *
-     * @param project
+     * @param aProject
      *            the project.
      * @return the timestamp.
+     * @deprecated To be removed without replacement
      */
-    Date getProjectTimeStamp(Project project);
+    @Deprecated
+    Date getProjectTimeStamp(Project aProject);
 
     /**
      * Get a {@link Project} from the database the name of the Project
      *
-     * @param name
-     *            name of the project
+     * @param aSlug
+     *            URL slug of the project
      * @return {@link Project} object from the database or an error if the project is not found.
      *         Exception is handled from the calling method.
      */
-    Project getProject(String name);
+    Project getProjectBySlug(String aSlug);
 
     /**
      * Get a project by its id.
      *
-     * @param id
+     * @param aId
      *            the ID.
      * @return the project.
      */
-    Project getProject(long id);
+    Project getProject(long aId);
 
     /**
-     * List all Projects. If the user logged have a ROLE_ADMIN, he can see all the projects.
-     * Otherwise, a user will see projects only he is member of.
+     * List all Projects.
      *
      * @return the projects
      */
@@ -264,24 +345,38 @@ public interface ProjectService
      * Remove a project. A ROLE_ADMIN or project admin can remove a project. removing a project will
      * remove associated source documents and annotation documents.
      *
-     * @param project
+     * @param aProject
      *            the project to be deleted
      * @throws IOException
      *             if the project to be deleted is not available in the file system
      */
     @PreAuthorize("hasAnyRole('ROLE_ADMIN','ROLE_USER')")
-    void removeProject(Project project) throws IOException;
+    void removeProject(Project aProject) throws IOException;
 
     /**
-     * List projects accessible by current user
+     * List projects accessible by the given user
      *
+     * @param aUser
+     *            the user
      * @return list of projects accessible by the user.
      */
     List<Project> listAccessibleProjects(User aUser);
 
     /**
-     * List projects manageable by current user
+     * List projects accessible by the given user along with the roles that user has on the
+     * projects.
      *
+     * @param aUser
+     *            the user
+     * @return list of projects accessible by the user.
+     */
+    Map<Project, Set<PermissionLevel>> listAccessibleProjectsWithPermissions(User aUser);
+
+    /**
+     * List projects manageable by current user
+     * 
+     * @param aUser
+     *            the user
      * @return list of projects manageable by the user.
      */
     List<Project> listManageableProjects(User aUser);
@@ -290,12 +385,21 @@ public interface ProjectService
      * List projects in which the given user is curator or manager
      *
      * @return list of projects manageable by the user.
+     * @deprecated Use
+     *             {{@link #listProjectsWithUserHavingRole(User, PermissionLevel, PermissionLevel...)}}
+     *             instead.
      */
+    @SuppressWarnings("javadoc")
+    @Deprecated
     List<Project> listManageableCuratableProjects(User aUser);
 
     /**
-     * List projects that allow calculation of pairwise agreement
+     * @return list of projects that allow calculation of pairwise agreement. That means it lists
+     *         all projects where there are at least two annotators.
+     * 
+     * @deprecated To be removed without replacement
      */
+    @Deprecated
     List<Project> listProjectsForAgreement();
 
     File getProjectFolder(Project aProject);
@@ -303,117 +407,42 @@ public interface ProjectService
     /**
      * Export the associated project log for this {@link Project} while copying a project
      *
-     * @param project
+     * @param aProject
      *            the project.
      * @return the log file.
      */
-    File getProjectLogFile(Project project);
+    File getProjectLogFile(Project aProject);
 
-    File getMetaInfFolder(Project project);
+    File getMetaInfFolder(Project aProject);
 
     /**
      * Save some properties file associated to a project, such as meta-data.properties
      *
-     * @param project
+     * @param aProject
      *            The project for which the user save some properties file.
-     * @param is
+     * @param aInputStream
      *            the properties file.
-     * @param fileName
+     * @param aFileName
      *            the file name.
      * @throws IOException
      *             if an I/O error occurs.
+     * @deprecated To be removed without replacement
      */
-    void savePropertiesFile(Project project, InputStream is, String fileName) throws IOException;
-
-    // --------------------------------------------------------------------------------------------
-    // Methods related to guidelines
-    // --------------------------------------------------------------------------------------------
-
-    /**
-     * Write this {@code content} of the guideline file in the project;
-     *
-     * @param project
-     *            the project.
-     * @param content
-     *            the guidelines.
-     * @param fileName
-     *            the filename.
-     * @throws IOException
-     *             if an I/O error occurs.
-     */
-    void createGuideline(Project project, File content, String fileName) throws IOException;
-
-    void createGuideline(Project project, InputStream content, String fileName) throws IOException;
-
-    /**
-     * get the annotation guideline document from the file system
-     *
-     * @param project
-     *            the project.
-     * @param fileName
-     *            the filename.
-     * @return the file.
-     */
-    File getGuideline(Project project, String fileName);
-
-    /**
-     * Export the associated project guideline for this {@link Project} while copying a project
-     *
-     * @param project
-     *            the project.
-     * @return the file.
-     */
-    File getGuidelinesFolder(Project project);
-
-    /**
-     * List annotation guideline document already uploaded
-     *
-     * @param project
-     *            the project.
-     * @return the filenames.
-     */
-    List<String> listGuidelines(Project project);
-
-    /**
-     * Checks if the given project defines any guidelines.
-     *
-     * @param project
-     *            the project.
-     * @return the filenames.
-     */
-    boolean hasGuidelines(Project project);
-
-    /**
-     * Remove an annotation guideline document from the file system
-     *
-     * @param project
-     *            the project.
-     * @param fileName
-     *            the filename.
-     * @throws IOException
-     *             if an I/O error occurs.
-     */
-    void removeGuideline(Project project, String fileName) throws IOException;
+    @Deprecated()
+    void savePropertiesFile(Project aProject, InputStream aInputStream, String aFileName)
+        throws IOException;
 
     // --------------------------------------------------------------------------------------------
     // Methods related to permissions
     // --------------------------------------------------------------------------------------------
 
     /**
-     * Returns a role of a user, globally we will have ROLE_ADMIN and ROLE_USER
-     *
-     * @param user
-     *            the {@link User} object
-     * @return the roles.
-     * @deprecated use {@link UserDao#listAuthorities(User)}
+     * @param aUser
+     *            the user
+     * @return if the user manages any project or has the ability to create new projects that the
+     *         user would then manage.
      */
-    @Deprecated
-    List<Authority> listAuthorities(User user);
-
-    /**
-     * Can the given user access the project setting of <b>some</b> project.
-     */
-    public boolean managesAnyProject(User user);
+    public boolean managesAnyProject(User aUser);
 
     /**
      * Determine if the user is allowed to update a project.
@@ -423,23 +452,10 @@ public interface ProjectService
      * @param aUser
      *            the user.
      * @return if the user may update a project.
+     * @deprecated Use {@link #hasRole(User, Project, PermissionLevel, PermissionLevel...)}
      */
+    @Deprecated
     boolean isManager(Project aProject, User aUser);
-
-    /**
-     * @deprecated Use {@link #isManager(Project, User)}
-     */
-    @Deprecated
-    default boolean isProjectAdmin(Project aProject, User aUser)
-    {
-        return isManager(aProject, aUser);
-    }
-
-    /**
-     * @deprecated Use {@link #isManager(Project, User)}
-     */
-    @Deprecated
-    boolean isAdmin(Project aProject, User aUser);
 
     /**
      * Determine if the user is a curator or not.
@@ -449,7 +465,9 @@ public interface ProjectService
      * @param aUser
      *            the user.
      * @return if the user is a curator.
+     * @deprecated Use {@link #hasRole(User, Project, PermissionLevel, PermissionLevel...)}
      */
+    @Deprecated
     boolean isCurator(Project aProject, User aUser);
 
     /**
@@ -460,10 +478,59 @@ public interface ProjectService
      * @param aUser
      *            the user.
      * @return if the user is a member.
+     * @deprecated Use {@link #hasRole(User, Project, PermissionLevel, PermissionLevel...)}
      */
+    @Deprecated
     boolean isAnnotator(Project aProject, User aUser);
 
-    boolean hasRole(User aUser, Project aProject, PermissionLevel... aRole);
+    /**
+     * Check whether the given user has any role at all in the given project.
+     * 
+     * @param aUser
+     *            a user.
+     * @param aProject
+     *            a project.
+     * @return whether the user has any role in the project.
+     */
+    boolean hasAnyRole(User aUser, Project aProject);
+
+    /**
+     * Check whether the given user has one or more roles in a project. Note that the split into two
+     * arguments is only for the compiler to be able to check if at least one role has been
+     * specified. The first role is not privileged over the other roles in any way!
+     * 
+     * @param aUser
+     *            a user.
+     * @param aProject
+     *            a project.
+     * @param aRole
+     *            at least one role must be given, but the check is against this role OR any of the
+     *            additional roles.
+     * @param aMoreRoles
+     *            more roles.
+     * @return whether the user has any role in the project.
+     */
+    boolean hasRole(User aUser, Project aProject, PermissionLevel aRole,
+            PermissionLevel... aMoreRoles);
+
+    /**
+     * Check whether the given user has one or more roles in a project. Note that the split into two
+     * arguments is only for the compiler to be able to check if at least one role has been
+     * specified. The first role is not privileged over the other roles in any way!
+     * 
+     * @param aUser
+     *            a user.
+     * @param aProject
+     *            a project.
+     * @param aRole
+     *            at least one role must be given, but the check is against this role OR any of the
+     *            additional roles.
+     * @param aMoreRoles
+     *            more roles.
+     * @return whether the user has any role in the project.
+     */
+    boolean hasRole(String aUser, Project aProject, PermissionLevel aRole,
+            PermissionLevel... aMoreRoles);
 
     // --------------------------------------------------------------------------------------------
     // Methods related to other things
@@ -484,4 +551,19 @@ public interface ProjectService
         throws IOException;
 
     List<ProjectInitializer> listProjectInitializers();
+
+    static MDCContext withProjectLogger(Project aProject)
+    {
+        Validate.notNull(aProject, "Project must be given");
+        Validate.notNull(aProject.getId(), "Project must have been saved already");
+        Validate.notNull(MDC.get(KEY_REPOSITORY_PATH), "Repository path must be set in MDC");
+
+        return MDCContext.open().with(KEY_PROJECT_ID, String.valueOf(aProject.getId()));
+    }
+
+    String deriveSlugFromName(String aName);
+
+    String deriveUniqueSlug(String aSlug);
+
+    Realm getRealm(String aRealmId);
 }

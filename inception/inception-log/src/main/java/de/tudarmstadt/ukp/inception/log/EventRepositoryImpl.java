@@ -26,13 +26,14 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 import javax.persistence.TypedQuery;
 
+import org.apache.commons.lang3.function.FailableConsumer;
+import org.apache.commons.lang3.stream.Streams;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +53,8 @@ import de.tudarmstadt.ukp.inception.log.model.LoggedEvent;
 public class EventRepositoryImpl
     implements EventRepository
 {
+    private final int RECENT_ACTIVITY_HORIZON = 3500;
+
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     private @PersistenceContext EntityManager entityManager;
@@ -106,7 +109,8 @@ public class EventRepositoryImpl
                 .setParameter("project", aProject.getId()) //
                 .setParameter("event", aEventType) //
                 .setParameter("details", aDetail) //
-                .setMaxResults(aMaxSize).getResultList();
+                .setMaxResults(aMaxSize) //
+                .getResultList();
     }
 
     @Override
@@ -157,7 +161,7 @@ public class EventRepositoryImpl
                 .setParameter("user", aUsername) //
                 .setParameter("project", aProject.getId()) //
                 .setParameter("eventTypes", aEventTypes) //
-                .setMaxResults(3500) //
+                .setMaxResults(RECENT_ACTIVITY_HORIZON) //
                 .getResultList();
 
         List<LoggedEvent> reducedResults = new ArrayList<>();
@@ -181,8 +185,23 @@ public class EventRepositoryImpl
     }
 
     @Override
+    public List<LoggedEvent> listRecentActivity(String aUsername, int aMaxSize)
+    {
+        String query = join("\n", //
+                "FROM  LoggedEvent", //
+                "WHERE user = :user", //
+                "ORDER BY created DESC");
+
+        return entityManager.createQuery(query, LoggedEvent.class) //
+                .setParameter("user", aUsername) //
+                .setMaxResults(aMaxSize) //
+                .getResultList();
+    }
+
+    @Override
     @Transactional
-    public void forEachLoggedEvent(Project aProject, Consumer<LoggedEvent> aConsumer)
+    public <E extends Throwable> void forEachLoggedEvent(Project aProject,
+            FailableConsumer<LoggedEvent, E> aConsumer)
     {
         // Set up data source
         String query = String.join("\n", //
@@ -193,7 +212,7 @@ public class EventRepositoryImpl
                 .setParameter("project", aProject.getId());
 
         try (Stream<LoggedEvent> eventStream = typedQuery.getResultStream()) {
-            eventStream.forEach(aConsumer);
+            Streams.stream(eventStream).forEach(aConsumer);
         }
     }
 }

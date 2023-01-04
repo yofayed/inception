@@ -31,6 +31,8 @@ import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 import org.springframework.stereotype.Component;
 
+import de.tudarmstadt.ukp.clarin.webanno.support.logging.BaseLoggers;
+
 @Component
 public class GlobalInterceptorsRegistryImpl
     implements GlobalInterceptorsRegistry
@@ -62,10 +64,12 @@ public class GlobalInterceptorsRegistryImpl
             AnnotationAwareOrderComparator.sort(fsp);
 
             for (GlobalInterceptor fs : fsp) {
-                log.info("Found global interceptor: {}",
+                log.debug("Found global interceptor: {}",
                         ClassUtils.getAbbreviatedName(fs.getClass(), 20));
             }
         }
+
+        BaseLoggers.BOOT_LOG.info("Found [{}] global interceptors", fsp.size());
 
         interceptors = Collections.unmodifiableList(fsp);
     }

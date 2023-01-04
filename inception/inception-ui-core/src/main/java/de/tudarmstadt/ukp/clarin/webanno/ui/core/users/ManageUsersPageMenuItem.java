@@ -25,6 +25,7 @@ import de.agilecoders.wicket.core.markup.html.bootstrap.image.IconType;
 import de.agilecoders.wicket.extensions.markup.html.bootstrap.icon.FontAwesome5IconType;
 import de.tudarmstadt.ukp.clarin.webanno.security.UserDao;
 import de.tudarmstadt.ukp.clarin.webanno.ui.core.menu.MenuItem;
+import wicket.contrib.input.events.key.KeyType;
 
 @Component
 public class ManageUsersPageMenuItem
@@ -66,10 +67,8 @@ public class ManageUsersPageMenuItem
     }
 
     @Override
-    public boolean isDirectAccessAllowed()
+    public KeyType[] shortcut()
     {
-        // Users should not see the menu item for the user management page, but they may access this
-        // page directly in order to edit their own profile via the link in the menu bar.
-        return true;
+        return new KeyType[] { KeyType.Alt, KeyType.u };
     }
 }
